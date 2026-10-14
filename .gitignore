@@ -1,0 +1,13 @@
+.git/
+.gradle/
+build/
+app/build/
+local.properties
+*.jks
+*.keystore
+*.bak
+*.bak_*
+*before_v*.java
+backup_*/
+patch_*.py
+update
