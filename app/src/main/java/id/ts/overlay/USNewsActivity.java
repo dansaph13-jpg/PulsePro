@@ -102,7 +102,7 @@ public class USNewsActivity extends Activity {
             try {
                 LocalDate today = LocalDate.now(ZoneId.of("Asia/Jakarta"));
                 String from = today.toString();
-                String to = today.plusDays(7).toString();
+                String to = today.toString();
                 URL url = new URL(
                     "https://www.financecalendar.com/wp-json/fc/v1/calendar"
                     + "?from=" + from + "&to=" + to
@@ -256,7 +256,7 @@ public class USNewsActivity extends Activity {
     }
 
     String analyze(String name,String actual,String forecast) {
-        if (actual.equals("--") || forecast.equals("--"))
+        if (number(actual) == null || number(forecast) == null)
             return "Menunggu ACT/PRED lengkap. Arah XAUUSD dan USD belum dikonfirmasi.";
 
         Double a = number(actual);

@@ -7,7 +7,7 @@
 
     <application
         android:theme="@style/AppTheme"
-        android:label="TS Gold Overlay"
+        android:label="TS"
         android:usesCleartextTraffic="false">
 
         <activity

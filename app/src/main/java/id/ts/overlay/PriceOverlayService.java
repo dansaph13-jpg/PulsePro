@@ -116,7 +116,7 @@ public class PriceOverlayService extends Service {
         header.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("CUAN MONITOR");
+        title.setText("TS");
         title.setTextColor(emerald);
         title.setTextSize(12);
         title.setTypeface(null, Typeface.BOLD);
@@ -144,7 +144,7 @@ public class PriceOverlayService extends Service {
         android.widget.LinearLayout buyCard =
             new android.widget.LinearLayout(this);
         buyCard.setOrientation(android.widget.LinearLayout.VERTICAL);
-        buyCard.setPadding(10*d, 12*d, 5*d, 10*d);
+        buyCard.setPadding(7*d, 9*d, 3*d, 8*d);
         android.graphics.drawable.GradientDrawable buyBg =
             new android.graphics.drawable.GradientDrawable();
         buyBg.setColor(Color.rgb(5, 43, 33));
@@ -152,16 +152,10 @@ public class PriceOverlayService extends Service {
         buyBg.setStroke(Math.max(1, d), Color.rgb(0, 180, 115));
         buyCard.setBackground(buyBg);
 
-        TextView buyLabel = new TextView(this);
-        buyLabel.setText("BUY");
-        buyLabel.setTextColor(muted);
-        buyLabel.setTextSize(11);
-        buyCard.addView(buyLabel);
-
         buyPrice = new TextView(this);
         buyPrice.setText("Menunggu...");
         buyPrice.setTextColor(white);
-        buyPrice.setTextSize(22);
+        buyPrice.setTextSize(19);
         buyPrice.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         buyPrice.setSingleLine(true);
         buyCard.addView(buyPrice);
@@ -173,79 +167,65 @@ public class PriceOverlayService extends Service {
         buyCard.addView(buyDelta);
 
         android.widget.LinearLayout.LayoutParams buyLp =
-            new android.widget.LinearLayout.LayoutParams(0, -2, 1.15f);
-        buyLp.rightMargin = 5*d;
+            new android.widget.LinearLayout.LayoutParams(0, -2, 2f);
+        buyLp.rightMargin = 3*d;
         priceRow.addView(buyCard, buyLp);
-
-        android.widget.LinearLayout rightColumn =
-            new android.widget.LinearLayout(this);
-        rightColumn.setOrientation(android.widget.LinearLayout.VERTICAL);
 
         android.widget.LinearLayout sellCard =
             new android.widget.LinearLayout(this);
         sellCard.setOrientation(android.widget.LinearLayout.VERTICAL);
-        sellCard.setPadding(8*d, 7*d, 3*d, 7*d);
+        sellCard.setGravity(Gravity.CENTER_VERTICAL);
+        sellCard.setPadding(3*d, 8*d, 2*d, 8*d);
         android.graphics.drawable.GradientDrawable sellBg =
             new android.graphics.drawable.GradientDrawable();
         sellBg.setColor(Color.rgb(10, 59, 45));
         sellBg.setCornerRadius(8*d);
         sellCard.setBackground(sellBg);
 
-        TextView sellLabel = new TextView(this);
-        sellLabel.setText("SELL");
-        sellLabel.setTextColor(muted);
-        sellLabel.setTextSize(10);
-        sellCard.addView(sellLabel);
-
         sellPrice = new TextView(this);
         sellPrice.setText("—");
         sellPrice.setTextColor(white);
-        sellPrice.setTextSize(14);
+        sellPrice.setTextSize(12);
         sellPrice.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         sellPrice.setSingleLine(true);
         sellCard.addView(sellPrice);
 
         sellDelta = new TextView(this);
-        sellDelta.setText("Menunggu data 1 menit");
+        sellDelta.setText("Menunggu");
         sellDelta.setTextColor(muted);
-        sellDelta.setTextSize(9);
+        sellDelta.setTextSize(8);
         sellCard.addView(sellDelta);
 
-        rightColumn.addView(sellCard);
+        android.widget.LinearLayout.LayoutParams sellLp =
+            new android.widget.LinearLayout.LayoutParams(0, -2, 1f);
+        sellLp.rightMargin = 3*d;
+        priceRow.addView(sellCard, sellLp);
 
         android.widget.LinearLayout spreadCard =
             new android.widget.LinearLayout(this);
         spreadCard.setOrientation(android.widget.LinearLayout.VERTICAL);
-        spreadCard.setPadding(8*d, 7*d, 3*d, 7*d);
+        spreadCard.setGravity(Gravity.CENTER_VERTICAL);
+        spreadCard.setPadding(3*d, 8*d, 1*d, 8*d);
         android.graphics.drawable.GradientDrawable spreadBg =
             new android.graphics.drawable.GradientDrawable();
         spreadBg.setColor(Color.rgb(10, 59, 45));
         spreadBg.setCornerRadius(8*d);
         spreadCard.setBackground(spreadBg);
 
-        TextView spreadLabel = new TextView(this);
-        spreadLabel.setText("SPREAD");
-        spreadLabel.setTextColor(muted);
-        spreadLabel.setTextSize(10);
-        spreadCard.addView(spreadLabel);
-
         spreadValue = new TextView(this);
         spreadValue.setText("—");
         spreadValue.setTextColor(emerald);
-        spreadValue.setTextSize(14);
+        spreadValue.setTextSize(13);
         spreadValue.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        spreadValue.setSingleLine(true);
         spreadCard.addView(spreadValue);
 
-        android.widget.LinearLayout.LayoutParams spreadLp =
-            new android.widget.LinearLayout.LayoutParams(-1, -2);
-        spreadLp.topMargin = 5*d;
-        rightColumn.addView(spreadCard, spreadLp);
-
-        priceRow.addView(rightColumn,
+        priceRow.addView(spreadCard,
             new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+
         android.widget.LinearLayout.LayoutParams priceRowLp =
             new android.widget.LinearLayout.LayoutParams(-1, -2);
-        priceRowLp.topMargin = 12*d;
+        priceRowLp.topMargin = 9*d;
         root.addView(priceRow, priceRowLp);
 
         newsDisplay = new TextView(this);
@@ -424,12 +404,12 @@ public class PriceOverlayService extends Service {
 
     private void loadOverlayNews() {
         worker.executor.execute(() -> {
-            String result = "US NEWS 7 HARI\nData berita belum tersedia.";
+            String result = "US NEWS • HARI INI\nData berita belum tersedia.";
             HttpURLConnection c = null;
             try {
                 java.time.LocalDate today =
                     java.time.LocalDate.now(java.time.ZoneId.of("Asia/Jakarta"));
-                java.time.LocalDate end = today.plusDays(7);
+                java.time.LocalDate end = today;
                 URL url = new URL(
                     "https://www.financecalendar.com/wp-json/fc/v1/calendar"
                     + "?from=" + today + "&to=" + end + "&limit=200");
@@ -454,7 +434,7 @@ public class PriceOverlayService extends Service {
                     events = root.optJSONObject("data").optJSONArray("events");
 
                 if (events != null) {
-                    StringBuilder out = new StringBuilder("🇺🇸 US NEWS 7 HARI\n");
+                    StringBuilder out = new StringBuilder("🇺🇸 US NEWS • HARI INI\n");
                     int count = 0;
                     for (int i = 0; i < events.length() && count < 12; i++) {
                         org.json.JSONObject e = events.optJSONObject(i);
@@ -498,10 +478,10 @@ public class PriceOverlayService extends Service {
                         out.append("Belum ada berita AS yang cocok atau format sumber berubah.");
                     result = out.toString();
                 } else {
-                    result = "🇺🇸 US NEWS 7 HARI\nFormat sumber berita belum dikenali.";
+                    result = "🇺🇸 US NEWS • HARI INI\nFormat sumber berita belum dikenali.";
                 }
             } catch (Exception ex) {
-                result = "🇺🇸 US NEWS 7 HARI\nData kalender belum dapat dimuat.";
+                result = "🇺🇸 US NEWS • HARI INI\nData kalender belum dapat dimuat.";
             } finally {
                 if (c != null) c.disconnect();
             }
@@ -642,8 +622,8 @@ public class PriceOverlayService extends Service {
 
     private Notification buildNotification() {
         String title = buy > 0
-            ? "CUAN MONITOR • BUY Rp" + rupiah(buy)
-            : "CUAN MONITOR";
+            ? "TS • Rp" + rupiah(buy)
+            : "TS";
         String content = buy > 0
             ? "SELL Rp" + rupiah(sell) + " • Update " + updated
             : "Menunggu data harga Treasury";

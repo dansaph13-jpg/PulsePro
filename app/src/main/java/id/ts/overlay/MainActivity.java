@@ -72,7 +72,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         header.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("CUAN MONITOR");
+        title.setText("TS");
         title.setTextColor(Color.rgb(0,230,150));
         title.setTextSize(22);
         title.setTypeface(null,1);
@@ -95,7 +95,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
 
         menu.setOnClickListener(v -> {
             PopupMenu popup = new PopupMenu(this,menu);
-            popup.getMenu().add("US NEWS MINGGUAN").setOnMenuItemClickListener(item -> {
+            popup.getMenu().add("US NEWS HARI INI").setOnMenuItemClickListener(item -> {
                 openNews("weekly"); return true;
             });
             popup.getMenu().add("AKTIFKAN OVERLAY").setOnMenuItemClickListener(item -> {
@@ -354,7 +354,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
                     java.time.LocalDate.now(java.time.ZoneId.of("Asia/Jakarta"));
                 java.net.URL url = new java.net.URL(
                     "https://www.financecalendar.com/wp-json/fc/v1/calendar"
-                    + "?from=" + today + "&to=" + today.plusDays(7) + "&limit=200");
+                    + "?from=" + today + "&to=" + today + "&limit=200");
                 c = (java.net.HttpURLConnection) url.openConnection();
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(10000);
@@ -372,8 +372,10 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
                 org.json.JSONObject rootJson = new org.json.JSONObject(raw);
                 org.json.JSONArray events = rootJson.optJSONArray("events");
                 if (events == null) events = rootJson.optJSONArray("data");
+                if (events == null && rootJson.optJSONObject("data") != null)
+                    events = rootJson.optJSONObject("data").optJSONArray("events");
 
-                StringBuilder b = new StringBuilder("🇺🇸 US NEWS • 7 HARI");
+                StringBuilder b = new StringBuilder("🇺🇸 US NEWS • HARI INI");
                 int count = 0;
                 if (events != null) {
                     for (int i = 0; i < events.length() && count < 3; i++) {
@@ -446,7 +448,13 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
     }
 
     String newsBias(String name, String actual, String forecast) {
-        if (actual.equals("Belum rilis") || forecast.equals("Belum rilis"))
+        if (actual == null || forecast == null
+                || actual.trim().isEmpty() || forecast.trim().isEmpty()
+                || actual.equalsIgnoreCase("Belum rilis")
+                || forecast.equalsIgnoreCase("Belum rilis")
+                || actual.equals("--") || forecast.equals("--")
+                || actual.equalsIgnoreCase("N/A")
+                || forecast.equalsIgnoreCase("N/A"))
             return "USD / XAUUSD: menunggu ACT dan PRED.";
 
         try {

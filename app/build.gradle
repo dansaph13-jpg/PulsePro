@@ -10,8 +10,8 @@ android {
         applicationId 'id.tsgold.pulsepro'
         minSdk 29
         targetSdk 32
-        versionCode 11
-        versionName '11.0'
+        versionCode 12
+        versionName '12.0'
     }
 }
 
