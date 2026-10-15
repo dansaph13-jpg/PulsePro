@@ -127,9 +127,131 @@ public class USNewsActivity extends Activity {
                 result = "";
             }
 
+            if (!result.isEmpty()) {
+                try {
+                    LocalDate today = LocalDate.now(ZoneId.of("Asia/Jakarta"));
+                    String html = fetchText(
+                        "https://forex.tradingcharts.com/economic_calendar/"
+                        + today.toString() + ".html?code=USD");
+
+                    if (!html.isEmpty()) {
+                        ArrayList<String[]> rows = tradingRows(html);
+                        JSONObject root = new JSONObject(result);
+                        JSONArray events = root.optJSONArray("events");
+                        if (events == null) events = root.optJSONArray("data");
+                        if (events == null && root.optJSONObject("data") != null)
+                            events = root.optJSONObject("data").optJSONArray("events");
+
+                        if (events != null) {
+                            for (int i = 0; i < events.length(); i++) {
+                                JSONObject e = events.optJSONObject(i);
+                                if (e == null) continue;
+                                String name = (e.optString("name", "") + " "
+                                    + e.optString("title", "")).toLowerCase(Locale.US);
+                                String target = null;
+
+                                if (name.contains("cpi")) {
+                                    String actual = tradingValue(rows, "CPI (Y-o-Y)", 1);
+                                    String forecast = tradingValue(rows, "CPI (Y-o-Y)", 2);
+                                    String previous = tradingValue(rows, "CPI (Y-o-Y)", 3);
+                                    if (!actual.equals("Belum rilis")) e.put("actual", actual);
+                                    if (!forecast.equals("Belum rilis")) e.put("consensus", forecast);
+                                    if (!previous.equals("Belum rilis")) e.put("prior", previous);
+                                } else if (name.contains("jobless claims")) {
+                                    target = "Initial Jobless Claims";
+                                } else if (name.contains("nonfarm") || name.contains("payroll")) {
+                                    target = "Nonfarm Payrolls";
+                                } else if (name.contains("unemployment")) {
+                                    target = "Unemployment Rate";
+                                } else if (name.contains("retail sales")) {
+                                    target = "Retail Sales (M-o-M)";
+                                } else if (name.contains("ppi")) {
+                                    target = "PPI (Y-o-Y)";
+                                } else if (name.contains("gdp")) {
+                                    target = "GDP (Q-o-Q)";
+                                }
+
+                                if (target != null) {
+                                    String actual = tradingValue(rows, target, 1);
+                                    String forecast = tradingValue(rows, target, 2);
+                                    String previous = tradingValue(rows, target, 3);
+                                    if (!actual.equals("Belum rilis")) e.put("actual", actual);
+                                    if (!forecast.equals("Belum rilis")) e.put("consensus", forecast);
+                                    if (!previous.equals("Belum rilis")) e.put("prior", previous);
+                                }
+                            }
+                            result = root.toString();
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
             final String data = result;
             runOnUiThread(() -> render(data));
         });
+    }
+
+
+    String fetchText(String address) {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection)new URL(address).openConnection();
+            c.setConnectTimeout(12000);
+            c.setReadTimeout(12000);
+            c.setRequestProperty("User-Agent", "Mozilla/5.0");
+            InputStream in = c.getInputStream();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] b = new byte[4096];
+            int n;
+            while ((n = in.read(b)) != -1) out.write(b, 0, n);
+            in.close();
+            return out.toString("UTF-8");
+        } catch (Exception ex) {
+            return "";
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    ArrayList<String[]> tradingRows(String html) {
+        ArrayList<String[]> result = new ArrayList<>();
+        java.util.regex.Matcher tr = java.util.regex.Pattern.compile(
+            "<tr\\b[^>]*>(.*?)</tr>",
+            java.util.regex.Pattern.CASE_INSENSITIVE |
+            java.util.regex.Pattern.DOTALL).matcher(html);
+
+        while (tr.find()) {
+            ArrayList<String> cells = new ArrayList<>();
+            java.util.regex.Matcher td = java.util.regex.Pattern.compile(
+                "<td\\b[^>]*>(.*?)</td>",
+                java.util.regex.Pattern.CASE_INSENSITIVE |
+                java.util.regex.Pattern.DOTALL).matcher(tr.group(1));
+
+            while (td.find()) {
+                String v = td.group(1).replaceAll("(?is)<[^>]*>", " ")
+                    .replace("&nbsp;", " ").replace("&#160;", " ")
+                    .replace("&amp;", "&").trim().replaceAll("\\s+", " ");
+                cells.add(v);
+            }
+
+            if (cells.size() >= 8 &&
+                "USD".equalsIgnoreCase(cells.get(1))) {
+                result.add(new String[] {
+                    cells.get(3), cells.get(5), cells.get(6), cells.get(7)
+                });
+            }
+        }
+        return result;
+    }
+
+    String tradingValue(ArrayList<String[]> rows, String event, int col) {
+        for (String[] row : rows) {
+            if (row[0].equalsIgnoreCase(event) &&
+                col >= 0 && col < 4 &&
+                !row[col].isEmpty() && !row[col].equals("-") &&
+                !row[col].equals("--")) return row[col];
+        }
+        return "Belum rilis";
     }
 
     boolean isUSNews(JSONObject e) {
@@ -226,7 +348,7 @@ public class USNewsActivity extends Activity {
                 addText(card,name,17,Color.WHITE);
                 addText(card,wib + "  •  Impact: " + impact,12,Color.LTGRAY);
                 addText(card,"PREV   " + prior,14,Color.WHITE);
-                addText(card,"PRED   " + forecast,14,Color.WHITE);
+                addText(card,"FORECAST   " + forecast,14,Color.WHITE);
                 addText(card,"ACT      " + actual,15,
                     actual.equals("--") ? Color.LTGRAY : Color.rgb(90,220,140));
                 addText(card,"ANALISA DAMPAK NEWS",13,Color.rgb(212,175,55));
@@ -257,7 +379,7 @@ public class USNewsActivity extends Activity {
 
     String analyze(String name,String actual,String forecast) {
         if (number(actual) == null || number(forecast) == null)
-            return "Menunggu ACT/PRED lengkap. Arah XAUUSD dan USD belum dikonfirmasi.";
+            return "Menunggu ACT/FORECAST lengkap. Arah XAUUSD dan USD belum dikonfirmasi.";
 
         Double a = number(actual);
         Double f = number(forecast);
@@ -272,8 +394,8 @@ public class USNewsActivity extends Activity {
         if (inverse) higher = !higher;
 
         if (higher)
-            return "ACT lebih kuat dari PRED. Bias awal USD cenderung bullish, XAUUSD cenderung bearish.";
-        return "ACT lebih lemah dari PRED. Bias awal USD cenderung bearish, XAUUSD cenderung bullish.";
+            return "ACT lebih kuat dari FORECAST. Bias awal USD cenderung bullish, XAUUSD cenderung bearish.";
+        return "ACT lebih lemah dari FORECAST. Bias awal USD cenderung bearish, XAUUSD cenderung bullish.";
     }
 
     Double number(String s) {

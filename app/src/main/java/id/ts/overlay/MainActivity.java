@@ -72,7 +72,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         header.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("TS");
+        title.setText("CUAN HUNTER");
         title.setTextColor(Color.rgb(0,230,150));
         title.setTextSize(22);
         title.setTypeface(null,1);
@@ -151,7 +151,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
 
         LinearLayout buyCard = new LinearLayout(this);
         buyCard.setOrientation(LinearLayout.VERTICAL);
-        buyCard.setPadding(dp(10), dp(12), dp(6), dp(12));
+        buyCard.setPadding(dp(10), dp(8), dp(6), dp(8));
         GradientDrawable buyBg = new GradientDrawable();
         buyBg.setColor(Color.rgb(5, 43, 33));
         buyBg.setCornerRadius(dp(10));
@@ -162,7 +162,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         buyLabel.setText("BUY");
         buyLabel.setTextColor(Color.LTGRAY);
         buyLabel.setTextSize(12);
-        buyCard.addView(buyLabel);
+        buyLabel.setVisibility(View.GONE);
 
         buyPriceView = new TextView(this);
         buyPriceView.setText("Menunggu...");
@@ -170,7 +170,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         buyPriceView.setTextSize(24);
         buyPriceView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         buyPriceView.setSingleLine(true);
-        buyPriceView.setTextSize(20);
+        buyPriceView.setTextSize(24);
         buyCard.addView(buyPriceView);
 
         buyDeltaView = new TextView(this);
@@ -180,7 +180,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         buyCard.addView(buyDeltaView);
 
         LinearLayout.LayoutParams buyLp =
-            new LinearLayout.LayoutParams(0, -2, 1.15f);
+            new LinearLayout.LayoutParams(0, -1, 1.15f);
         buyLp.rightMargin = dp(5);
         priceRow.addView(buyCard, buyLp);
 
@@ -199,7 +199,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         sellLabel.setText("SELL");
         sellLabel.setTextColor(Color.LTGRAY);
         sellLabel.setTextSize(11);
-        sellCard.addView(sellLabel);
+        sellLabel.setVisibility(View.GONE);
 
         sellPriceView = new TextView(this);
         sellPriceView.setText("—");
@@ -215,7 +215,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         sellDeltaView.setTextSize(10);
         sellCard.addView(sellDeltaView);
 
-        rightColumn.addView(sellCard);
+        rightColumn.addView(sellCard, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         LinearLayout spreadCard = new LinearLayout(this);
         spreadCard.setOrientation(LinearLayout.VERTICAL);
@@ -229,7 +229,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         spreadLabel.setText("SPREAD");
         spreadLabel.setTextColor(Color.LTGRAY);
         spreadLabel.setTextSize(11);
-        spreadCard.addView(spreadLabel);
+        spreadLabel.setVisibility(View.GONE);
 
         spreadView = new TextView(this);
         spreadView.setText("—");
@@ -239,13 +239,13 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         spreadCard.addView(spreadView);
 
         LinearLayout.LayoutParams spreadLp =
-            new LinearLayout.LayoutParams(-1, -2);
+            new LinearLayout.LayoutParams(-1, 0, 1f);
         spreadLp.topMargin = dp(5);
         rightColumn.addView(spreadCard, spreadLp);
 
         priceRow.addView(rightColumn,
-            new LinearLayout.LayoutParams(0, -2, 1f));
-        panel.addView(priceRow);
+            new LinearLayout.LayoutParams(0, -1, 1f));
+        panel.addView(priceRow, new LinearLayout.LayoutParams(-1, dp(120)));
 
         newsSummary = new TextView(this);
         newsSummary.setText("US NEWS • Mengambil jadwal ekonomi AS...");
@@ -346,95 +346,14 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
     };
 
     void loadMainNews() {
-        new Thread(() -> {
-            String result = "US NEWS • Data kalender belum tersedia.";
-            java.net.HttpURLConnection c = null;
-            try {
-                java.time.LocalDate today =
-                    java.time.LocalDate.now(java.time.ZoneId.of("Asia/Jakarta"));
-                java.net.URL url = new java.net.URL(
-                    "https://www.financecalendar.com/wp-json/fc/v1/calendar"
-                    + "?from=" + today + "&to=" + today + "&limit=200");
-                c = (java.net.HttpURLConnection) url.openConnection();
-                c.setConnectTimeout(10000);
-                c.setReadTimeout(10000);
-                c.setRequestProperty("Accept", "application/json");
-
-                String raw;
-                try (java.io.InputStream in = c.getInputStream();
-                     java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
-                    byte[] buf = new byte[4096];
-                    int n;
-                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                    raw = out.toString("UTF-8");
-                }
-
-                org.json.JSONObject rootJson = new org.json.JSONObject(raw);
-                org.json.JSONArray events = rootJson.optJSONArray("events");
-                if (events == null) events = rootJson.optJSONArray("data");
-                if (events == null && rootJson.optJSONObject("data") != null)
-                    events = rootJson.optJSONObject("data").optJSONArray("events");
-
-                StringBuilder b = new StringBuilder("🇺🇸 US NEWS • HARI INI");
-                int count = 0;
-                if (events != null) {
-                    for (int i = 0; i < events.length() && count < 3; i++) {
-                        org.json.JSONObject e = events.optJSONObject(i);
-                        if (e == null) continue;
-                        String name = newsValue(e, "title");
-                        if (name.equals("Belum rilis")) name = newsValue(e, "name");
-                        if (name.equals("Belum rilis")) name = "US economic event";
-                        String key = (name + " " + e.optString("category", ""))
-                            .toLowerCase(java.util.Locale.US);
-                        if (!(key.contains("us ") || key.contains("u.s.")
-                            || key.contains("united states") || key.contains("cpi")
-                            || key.contains("inflation") || key.contains("payroll")
-                            || key.contains("employment") || key.contains("jobless")
-                            || key.contains("fomc") || key.contains("federal reserve")
-                            || key.contains("pce") || key.contains("ppi")
-                            || key.contains("gdp") || key.contains("retail sales")
-                            || key.contains("ism") || key.contains("pmi")
-                            || key.contains("jolts") || key.contains("consumer confidence")
-                            || key.contains("durable goods") || key.contains("housing starts")))
-                            continue;
-
-                        String time = newsValue(e, "time_utc");
-                        if (time.equals("Belum rilis")) time = newsValue(e, "date");
-                        try {
-                            time = java.time.format.DateTimeFormatter
-                                .ofPattern("dd MMM HH:mm 'WIB'", new java.util.Locale("id", "ID"))
-                                .withZone(java.time.ZoneId.of("Asia/Jakarta"))
-                                .format(java.time.Instant.parse(time));
-                        } catch (Exception ignored) {}
-
-                        String impact = newsValue(e, "impact");
-                        String prior = newsValue(e, "prior");
-                        String forecast = newsValue(e, "consensus");
-                        String actual = newsValue(e, "actual");
-                        String bias = newsBias(name, actual, forecast);
-                        b.append("\n\n").append(name)
-                            .append("\n").append(time).append(" • ").append(impact)
-                            .append("\nPREV ").append(prior)
-                            .append(" | PRED ").append(forecast)
-                            .append(" | ACT ").append(actual)
-                            .append("\n").append(bias);
-                        count++;
-                    }
-                }
-                if (count == 0) b.append("\nBelum ada jadwal AS yang cocok.");
-                b.append("\nKetuk untuk analisis mingguan USD / XAUUSD.");
-                result = b.toString();
-            } catch (Exception ignored) {
-                result = "🇺🇸 US NEWS • Gagal memuat data. Ketuk untuk membuka berita mingguan.";
-            } finally {
-                if (c != null) c.disconnect();
-            }
-
-            final String displayNews = result;
-            handler.post(() -> {
-                if (active && newsSummary != null) newsSummary.setText(displayNews);
-            });
-        }).start();
+        String displayNews = "NEWS\n"
+            + "🇮🇩 CPI Indonesia — 14.30 WIB\n"
+            + "A>F Rp 🟢, A<F Rp 🔴, A=F Rp ⚪\n\n"
+            + "🇺🇸 PPI US — 19.30 WIB\n"
+            + "A>F USD 🟢, XAU 🔴\n"
+            + "A<F USD 🔴, XAU 🟢\n"
+            + "\nMode manual • jadwal perlu diverifikasi.";
+        if (newsSummary != null) newsSummary.setText(displayNews);
     }
 
     String newsValue(org.json.JSONObject e, String key) {
@@ -448,40 +367,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
     }
 
     String newsBias(String name, String actual, String forecast) {
-        if (actual == null || forecast == null
-                || actual.trim().isEmpty() || forecast.trim().isEmpty()
-                || actual.equalsIgnoreCase("Belum rilis")
-                || forecast.equalsIgnoreCase("Belum rilis")
-                || actual.equals("--") || forecast.equals("--")
-                || actual.equalsIgnoreCase("N/A")
-                || forecast.equalsIgnoreCase("N/A"))
-            return "USD / XAUUSD: menunggu ACT dan PRED.";
-
-        try {
-            double a = Double.parseDouble(
-                actual.replace(",", "").replace("%", "")
-                    .replaceAll("[^0-9.\\-]", ""));
-            double f = Double.parseDouble(
-                forecast.replace(",", "").replace("%", "")
-                    .replaceAll("[^0-9.\\-]", ""));
-
-            if (a == f)
-                return "USD: netral awal • XAUUSD: netral awal";
-
-            String n = name.toLowerCase(java.util.Locale.US);
-            boolean inverse = n.contains("jobless claims")
-                || n.contains("unemployment claims")
-                || n.contains("unemployment rate");
-
-            boolean stronger = a > f;
-            if (inverse) stronger = !stronger;
-
-            return stronger
-                ? "Bias awal: USD 🟢 bullish • XAUUSD 🔴 bearish"
-                : "Bias awal: USD 🔴 bearish • XAUUSD 🟢 bullish";
-        } catch (Exception ex) {
-            return "USD / XAUUSD: data perlu dibaca manual.";
-        }
+        return "Bias menunggu data aktual dan forecast valid.";
     }
 
     void recordSellPrice(double price) {
@@ -521,7 +407,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         int color;
         if (ref <= 0) {
             color = Color.rgb(245,200,90);
-            buyDeltaView.setText("Mengumpulkan data 1 menit");
+            buyDeltaView.setText("Mengumpulkan data");
         } else {
             double d = buy-ref;
             color = d > 0 ? Color.rgb(0,255,160)
@@ -529,7 +415,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
                 : Color.rgb(245,200,90);
             String arrow = d > 0 ? "▲ +" : d < 0 ? "▼ −" : "● ";
             buyDeltaView.setText(arrow + "Rp" + rupiah(Math.abs(d))
-                + " / 1 menit");
+               );
         }
 
         buyPriceView.setTextColor(color);
@@ -537,7 +423,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
 
         double sellRef = sellMinuteReference();
         if (sellRef <= 0) {
-            sellDeltaView.setText("Mengumpulkan data 1 menit");
+            sellDeltaView.setText("Mengumpulkan data");
             sellDeltaView.setTextColor(Color.rgb(245,200,90));
         } else {
             double sd = sell - sellRef;
@@ -545,7 +431,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
                 : sd < 0 ? Color.rgb(255,90,95)
                 : Color.rgb(245,200,90);
             String sa = sd > 0 ? "▲ +" : sd < 0 ? "▼ −" : "● ";
-            sellDeltaView.setText(sa + "Rp" + rupiah(Math.abs(sd)) + " / 1 menit");
+            sellDeltaView.setText(sa + "Rp" + rupiah(Math.abs(sd)));
             sellDeltaView.setTextColor(sc);
         }
         if (updateView != null) updateView.setText("Update: " + updated);
@@ -600,13 +486,15 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
                         Object raw = msg.opt("data");
                         JSONObject d = raw instanceof JSONObject
                             ? (JSONObject)raw : new JSONObject(String.valueOf(raw));
+                        android.util.Log.d("TS_RAW_PRICE", "buy=" + d.opt("buying_rate") + " sell=" + d.opt("selling_rate"));
                         double nb = parsePrice(d.opt("buying_rate"));
                         double ns = parsePrice(d.opt("selling_rate"));
+                        String rawPriceDebug = "RAW buy=" + d.opt("buying_rate") + " sell=" + d.opt("selling_rate");
                         String u = d.optString("created_at","-");
                         if (nb > 0 && ns > 0) handler.post(() -> {
                             if (!active) return;
                             previousBuy = buy; buy = nb; recordPrice(nb); sell = ns; recordSellPrice(ns); updated = u;
-                            status = "Terhubung • LIVE";
+                            status = rawPriceDebug;
                             render();
                         });
                     } else if ("pusher_internal:subscription_succeeded".equals(event)) {

@@ -116,7 +116,7 @@ public class PriceOverlayService extends Service {
         header.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
-        title.setText("TS");
+        title.setText("CUAN HUNTER");
         title.setTextColor(emerald);
         title.setTextSize(12);
         title.setTypeface(null, Typeface.BOLD);
@@ -167,9 +167,13 @@ public class PriceOverlayService extends Service {
         buyCard.addView(buyDelta);
 
         android.widget.LinearLayout.LayoutParams buyLp =
-            new android.widget.LinearLayout.LayoutParams(0, -2, 2f);
+            new android.widget.LinearLayout.LayoutParams(0, -1, 2f);
         buyLp.rightMargin = 3*d;
         priceRow.addView(buyCard, buyLp);
+
+        android.widget.LinearLayout rightColumn =
+            new android.widget.LinearLayout(this);
+        rightColumn.setOrientation(android.widget.LinearLayout.VERTICAL);
 
         android.widget.LinearLayout sellCard =
             new android.widget.LinearLayout(this);
@@ -197,9 +201,8 @@ public class PriceOverlayService extends Service {
         sellCard.addView(sellDelta);
 
         android.widget.LinearLayout.LayoutParams sellLp =
-            new android.widget.LinearLayout.LayoutParams(0, -2, 1f);
-        sellLp.rightMargin = 3*d;
-        priceRow.addView(sellCard, sellLp);
+            new android.widget.LinearLayout.LayoutParams(-1, 0, 1f);
+        rightColumn.addView(sellCard, sellLp);
 
         android.widget.LinearLayout spreadCard =
             new android.widget.LinearLayout(this);
@@ -220,11 +223,15 @@ public class PriceOverlayService extends Service {
         spreadValue.setSingleLine(true);
         spreadCard.addView(spreadValue);
 
-        priceRow.addView(spreadCard,
-            new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        android.widget.LinearLayout.LayoutParams spreadLp =
+            new android.widget.LinearLayout.LayoutParams(-1, 0, 1f);
+        spreadLp.topMargin = 4*d;
+        rightColumn.addView(spreadCard, spreadLp);
+        priceRow.addView(rightColumn,
+            new android.widget.LinearLayout.LayoutParams(0, -1, 2f));
 
         android.widget.LinearLayout.LayoutParams priceRowLp =
-            new android.widget.LinearLayout.LayoutParams(-1, -2);
+            new android.widget.LinearLayout.LayoutParams(-1, 120*d);
         priceRowLp.topMargin = 9*d;
         root.addView(priceRow, priceRowLp);
 
@@ -354,7 +361,7 @@ public class PriceOverlayService extends Service {
                     : Color.rgb(245,200,90);
             String sellArrow = sd > 0 ? "▲ +" : sd < 0 ? "▼ −" : "● ";
             sellDelta.setText(sellArrow + "Rp" + rupiah(Math.abs(sd))
-                    + " / 1 menit");
+                   );
         }
         sellPrice.setTextColor(sellColor);
         sellDelta.setTextColor(sellColor);
@@ -374,7 +381,7 @@ public class PriceOverlayService extends Service {
                 : Color.rgb(245,200,90);
             String arrow = d > 0 ? "▲ +" : d < 0 ? "▼ −" : "● ";
             buyDelta.setText(arrow + "Rp" + rupiah(Math.abs(d))
-                + " / 1 menit");
+               );
         }
 
         buyPrice.setTextColor(color);
@@ -403,94 +410,14 @@ public class PriceOverlayService extends Service {
     }
 
     private void loadOverlayNews() {
-        worker.executor.execute(() -> {
-            String result = "US NEWS • HARI INI\nData berita belum tersedia.";
-            HttpURLConnection c = null;
-            try {
-                java.time.LocalDate today =
-                    java.time.LocalDate.now(java.time.ZoneId.of("Asia/Jakarta"));
-                java.time.LocalDate end = today;
-                URL url = new URL(
-                    "https://www.financecalendar.com/wp-json/fc/v1/calendar"
-                    + "?from=" + today + "&to=" + end + "&limit=200");
-                c = (HttpURLConnection) url.openConnection();
-                c.setConnectTimeout(8000);
-                c.setReadTimeout(8000);
-                c.setRequestProperty("Accept", "application/json");
-
-                String raw;
-                try (InputStream in = c.getInputStream();
-                     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                    byte[] buf = new byte[4096];
-                    int n;
-                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                    raw = out.toString("UTF-8");
-                }
-
-                org.json.JSONObject root = new org.json.JSONObject(raw);
-                org.json.JSONArray events = root.optJSONArray("events");
-                if (events == null) events = root.optJSONArray("data");
-                if (events == null && root.optJSONObject("data") != null)
-                    events = root.optJSONObject("data").optJSONArray("events");
-
-                if (events != null) {
-                    StringBuilder out = new StringBuilder("🇺🇸 US NEWS • HARI INI\n");
-                    int count = 0;
-                    for (int i = 0; i < events.length() && count < 12; i++) {
-                        org.json.JSONObject e = events.optJSONObject(i);
-                        if (e == null) continue;
-
-                        String title = e.optString("title",
-                            e.optString("name", "Berita ekonomi AS"));
-                        String check = (title + " " + e.optString("country", "")
-                            + " " + e.optString("category", "")).toLowerCase(Locale.US);
-
-                        if (check.contains("china") || check.contains("australia")
-                            || check.contains("united kingdom") || check.contains("uk gdp")
-                            || check.contains("eurozone") || check.contains("japan")
-                            || check.contains("canada")) continue;
-
-                        if (!(check.startsWith("us ") || check.contains("united states")
-                            || check.contains("u.s.")
-                            || check.contains("cpi") || check.contains("inflation")
-                            || check.contains("payroll") || check.contains("employment")
-                            || check.contains("unemployment") || check.contains("fomc")
-                            || check.contains("federal reserve") || check.contains("pce")
-                            || check.contains("ppi") || check.contains("gdp")
-                            || check.contains("retail sales") || check.contains("ism")
-                            || check.contains("pmi") || check.contains("jolts")
-                            || check.contains("consumer confidence")
-                            || check.contains("jobless"))) continue;
-
-                        String time = e.optString("time_utc",
-                            e.optString("datetime", e.optString("date", "--")));
-                        String prev = e.optString("prior", e.optString("previous", "--"));
-                        String pred = e.optString("consensus", e.optString("forecast", "--"));
-                        String act = e.optString("actual", "--");
-
-                        out.append("\n").append(title)
-                            .append("\nWaktu sumber: ").append(time)
-                            .append("\nPREV ").append(prev).append("  PRED ").append(pred)
-                            .append("  ACT ").append(act).append("\n");
-                        count++;
-                    }
-                    if (count == 0)
-                        out.append("Belum ada berita AS yang cocok atau format sumber berubah.");
-                    result = out.toString();
-                } else {
-                    result = "🇺🇸 US NEWS • HARI INI\nFormat sumber berita belum dikenali.";
-                }
-            } catch (Exception ex) {
-                result = "🇺🇸 US NEWS • HARI INI\nData kalender belum dapat dimuat.";
-            } finally {
-                if (c != null) c.disconnect();
-            }
-
-            final String news = result;
-            handler.post(() -> {
-                if (running && newsDisplay != null) newsDisplay.setText(news);
-            });
-        });
+        String news = "NEWS\n"
+            + "🇮🇩 CPI Indonesia — 14.30 WIB\n"
+            + "A>F Rp 🟢, A<F Rp 🔴, A=F Rp ⚪\n\n"
+            + "🇺🇸 PPI US — 19.30 WIB\n"
+            + "A>F USD 🟢, XAU 🔴\n"
+            + "A<F USD 🔴, XAU 🟢\n"
+            + "\nMode manual • verifikasi jadwal sebelum digunakan.";
+        if (newsDisplay != null) newsDisplay.setText(news);
     }
 
     private double parsePrice(Object value) {
@@ -548,6 +475,7 @@ public class PriceOverlayService extends Service {
                         JSONObject data = raw instanceof JSONObject
                             ? (JSONObject) raw
                             : new JSONObject(String.valueOf(raw));
+                        
                         double b = parsePrice(data.opt("buying_rate"));
                         double s = parsePrice(data.opt("selling_rate"));
                         String u = data.optString("created_at", "-");
