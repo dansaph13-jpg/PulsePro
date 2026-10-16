@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
 
     LinearLayout root;
     TextView clock, display, statusView, updateView;
-TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, newsSummary;
+TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
     Handler handler = new Handler(Looper.getMainLooper());
     OkHttpClient client;
     WebSocket socket;
@@ -95,9 +95,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
 
         menu.setOnClickListener(v -> {
             PopupMenu popup = new PopupMenu(this,menu);
-            popup.getMenu().add("US NEWS HARI INI").setOnMenuItemClickListener(item -> {
-                openNews("weekly"); return true;
-            });
+            popup.getMenu().add("US NEWS HARI INI").setOnMenuItemClickListener(item -> { openNews("today"); return true; });
             popup.getMenu().add("AKTIFKAN OVERLAY").setOnMenuItemClickListener(item -> {
                 startOverlay(); return true;
             });
@@ -246,14 +244,6 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         priceRow.addView(rightColumn,
             new LinearLayout.LayoutParams(0, -1, 1f));
         panel.addView(priceRow, new LinearLayout.LayoutParams(-1, dp(120)));
-
-        newsSummary = new TextView(this);
-        newsSummary.setText("US NEWS • Mengambil jadwal ekonomi AS...");
-        newsSummary.setTextColor(Color.LTGRAY);
-        newsSummary.setTextSize(12);
-        newsSummary.setPadding(dp(2), dp(12), dp(2), dp(2));
-        newsSummary.setOnClickListener(v -> openNews("weekly"));
-        panel.addView(newsSummary);
         updateView = new TextView(this);
         updateView.setTextColor(Color.LTGRAY);
         updateView.setTextSize(12);
@@ -289,7 +279,6 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
         render();
         handler.post(clockTick);
         connectPusher();
-        handler.post(mainNewsTick);
     }
 
     void openNews(String period) {
@@ -337,38 +326,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView, n
             ? best.price : 0;
     }
 
-    final Runnable mainNewsTick = new Runnable() {
-        @Override public void run() {
-            if (!active) return;
-            loadMainNews();
-            handler.postDelayed(this, 60000L);
-        }
-    };
 
-    void loadMainNews() {
-        String displayNews = "NEWS\n"
-            + "🇮🇩 CPI Indonesia — 14.30 WIB\n"
-            + "A>F Rp 🟢, A<F Rp 🔴, A=F Rp ⚪\n\n"
-            + "🇺🇸 PPI US — 19.30 WIB\n"
-            + "A>F USD 🟢, XAU 🔴\n"
-            + "A<F USD 🔴, XAU 🟢\n"
-            + "\nMode manual • jadwal perlu diverifikasi.";
-        if (newsSummary != null) newsSummary.setText(displayNews);
-    }
-
-    String newsValue(org.json.JSONObject e, String key) {
-        Object value = e.opt(key);
-        if (value == null || value == org.json.JSONObject.NULL)
-            return "Belum rilis";
-        String result = String.valueOf(value).trim();
-        if (result.isEmpty() || result.equalsIgnoreCase("null"))
-            return "Belum rilis";
-        return result;
-    }
-
-    String newsBias(String name, String actual, String forecast) {
-        return "Bias menunggu data aktual dan forecast valid.";
-    }
 
     void recordSellPrice(double price) {
         long now = System.currentTimeMillis();
