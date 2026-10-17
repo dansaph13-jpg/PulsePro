@@ -53,7 +53,7 @@ public class PriceOverlayService extends Service {
             if (!running) return;
             if (clock != null) {
                 clock.setText(new java.text.SimpleDateFormat(
-                    "HH:mm:ss", java.util.Locale.getDefault()
+                    "ss", java.util.Locale.getDefault()
                 ).format(new java.util.Date()));
             }
             handler.postDelayed(this, 1000);
@@ -108,7 +108,7 @@ public class PriceOverlayService extends Service {
             new android.graphics.drawable.GradientDrawable();
         bg.setColor(navy);
         bg.setCornerRadius(16*d);
-        bg.setStroke(Math.max(1, d), Color.rgb(0, 180, 115));
+        bg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
         root.setBackground(bg);
 
         android.widget.LinearLayout header = new android.widget.LinearLayout(this);
@@ -138,7 +138,7 @@ public class PriceOverlayService extends Service {
             new android.graphics.drawable.GradientDrawable();
         buyBg.setColor(Color.rgb(5, 43, 33));
         buyBg.setCornerRadius(9*d);
-        buyBg.setStroke(Math.max(1, d), Color.rgb(0, 180, 115));
+        buyBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
         buyCard.setBackground(buyBg);
 
         buyPrice = new TextView(this);
@@ -173,7 +173,7 @@ public class PriceOverlayService extends Service {
             new android.graphics.drawable.GradientDrawable();
         sellBg.setColor(Color.rgb(10, 59, 45));
         sellBg.setCornerRadius(8*d);
-        sellBg.setStroke(Math.max(1, d), Color.rgb(0, 180, 115));
+        sellBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
         sellCard.setBackground(sellBg);
 
         sellPrice = new TextView(this);
@@ -194,44 +194,41 @@ public class PriceOverlayService extends Service {
             new android.widget.LinearLayout.LayoutParams(-1, 0, 1f);
         rightColumn.addView(sellCard, sellLp);
 
-        android.widget.LinearLayout bottomRow =
-            new android.widget.LinearLayout(this);
-        bottomRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        bottomRow.setGravity(Gravity.CENTER_VERTICAL);
-        bottomRow.setPadding(3*d, 0, 0, 0);
-
         spreadValue = new TextView(this);
         spreadValue.setText("—");
         spreadValue.setTextColor(emerald);
         spreadValue.setTextSize(11);
         spreadValue.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         spreadValue.setSingleLine(true);
-        android.graphics.drawable.GradientDrawable spreadBg = new android.graphics.drawable.GradientDrawable();
+        spreadValue.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable spreadBg =
+            new android.graphics.drawable.GradientDrawable();
         spreadBg.setColor(Color.rgb(5, 43, 33));
         spreadBg.setCornerRadius(6*d);
-        spreadBg.setStroke(Math.max(1, d), Color.rgb(0, 180, 115));
+        spreadBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
         spreadValue.setBackground(spreadBg);
-        spreadValue.setPadding(5*d, 2*d, 5*d, 2*d);
-        bottomRow.addView(spreadValue,
-            new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        spreadValue.setPadding(2*d, 1*d, 2*d, 1*d);
+        rightColumn.addView(spreadValue,
+            new android.widget.LinearLayout.LayoutParams(-1, 21*d));
 
         clock = new TextView(this);
         clock.setTextColor(emerald);
         clock.setTextSize(10);
         clock.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         clock.setSingleLine(true);
-        android.graphics.drawable.GradientDrawable clockBg = new android.graphics.drawable.GradientDrawable();
+        clock.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable clockBg =
+            new android.graphics.drawable.GradientDrawable();
         clockBg.setColor(Color.rgb(5, 43, 33));
         clockBg.setCornerRadius(6*d);
-        clockBg.setStroke(Math.max(1, d), Color.rgb(0, 180, 115));
+        clockBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
         clock.setBackground(clockBg);
-        clock.setPadding(4*d, 2*d, 4*d, 2*d);
-        bottomRow.addView(clock);
+        clock.setPadding(2*d, 1*d, 2*d, 1*d);
+        android.widget.LinearLayout.LayoutParams clockLp =
+            new android.widget.LinearLayout.LayoutParams(-1, 20*d);
+        clockLp.topMargin = 2*d;
+        rightColumn.addView(clock, clockLp);
 
-        android.widget.LinearLayout.LayoutParams bottomLp =
-            new android.widget.LinearLayout.LayoutParams(-1, 27*d);
-        bottomLp.topMargin = 2*d;
-        rightColumn.addView(bottomRow, bottomLp);
         priceRow.addView(rightColumn,
             new android.widget.LinearLayout.LayoutParams(0, -1, 1f));
 
@@ -340,8 +337,8 @@ public class PriceOverlayService extends Service {
             return;
         }
 
-        buyPrice.setText("Rp" + rupiah(buy));
-        sellPrice.setText("Rp" + rupiah(sell));
+        buyPrice.setText(rupiah(buy));
+        sellPrice.setText(rupiah(sell));
 
         double sellRef = sellMinuteReference();
         int sellColor;
@@ -353,11 +350,11 @@ public class PriceOverlayService extends Service {
             sellColor = sd > 0 ? Color.rgb(0,255,160)
                     : sd < 0 ? Color.rgb(255,90,95)
                     : Color.rgb(245,200,90);
-            String sellArrow = sd > 0 ? "▲ +" : sd < 0 ? "▼ −" : "● ";
-            sellDelta.setText(sellArrow + "Rp" + rupiah(Math.abs(sd))
+            String sellArrow = sd > 0 ? "▲ " : sd < 0 ? "▼ " : "● ";
+            sellDelta.setText(sellArrow + rupiah(Math.abs(sd))
                    );
         }
-        sellPrice.setTextColor(Color.rgb(239, 247, 247));
+        sellPrice.setTextColor(sellColor);
         sellDelta.setTextColor(sellColor);
 
         spreadValue.setText(String.format(Locale.US, "%.2f%%",
@@ -373,12 +370,12 @@ public class PriceOverlayService extends Service {
             color = d > 0 ? Color.rgb(0,255,160)
                 : d < 0 ? Color.rgb(255,90,95)
                 : Color.rgb(245,200,90);
-            String arrow = d > 0 ? "▲ +" : d < 0 ? "▼ −" : "● ";
-            buyDelta.setText(arrow + "Rp" + rupiah(Math.abs(d))
+            String arrow = d > 0 ? "▲ " : d < 0 ? "▼ " : "● ";
+            buyDelta.setText(arrow + rupiah(Math.abs(d))
                );
         }
 
-        buyPrice.setTextColor(Color.rgb(239, 247, 247));
+        buyPrice.setTextColor(color);
         buyDelta.setTextColor(color);
     }
 

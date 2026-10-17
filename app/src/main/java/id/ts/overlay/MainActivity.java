@@ -128,7 +128,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.rgb(10,59,45));
         bg.setCornerRadius(dp(14));
-        bg.setStroke(dp(1),Color.rgb(0,180,115));
+        bg.setStroke(dp(1),Color.rgb(212, 175, 55));
         panel.setBackground(bg);
         root.addView(panel,new LinearLayout.LayoutParams(-1,-2));
 
@@ -153,7 +153,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
         GradientDrawable buyBg = new GradientDrawable();
         buyBg.setColor(Color.rgb(5, 43, 33));
         buyBg.setCornerRadius(dp(10));
-        buyBg.setStroke(dp(1), Color.rgb(0, 180, 115));
+        buyBg.setStroke(dp(1), Color.rgb(212, 175, 55));
         buyCard.setBackground(buyBg);
 
         TextView buyLabel = new TextView(this);
@@ -191,6 +191,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
         GradientDrawable sellBg = new GradientDrawable();
         sellBg.setColor(Color.rgb(10, 59, 45));
         sellBg.setCornerRadius(dp(9));
+        sellBg.setStroke(dp(1), Color.rgb(212, 175, 55));
         sellCard.setBackground(sellBg);
 
         TextView sellLabel = new TextView(this);
@@ -221,6 +222,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
         GradientDrawable spreadBg = new GradientDrawable();
         spreadBg.setColor(Color.rgb(10, 59, 45));
         spreadBg.setCornerRadius(dp(9));
+        spreadBg.setStroke(dp(1), Color.rgb(212, 175, 55));
         spreadCard.setBackground(spreadBg);
 
         TextView spreadLabel = new TextView(this);
@@ -356,8 +358,8 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
             return;
         }
 
-        buyPriceView.setText("Rp" + rupiah(buy));
-        sellPriceView.setText("Rp" + rupiah(sell));
+        buyPriceView.setText(rupiah(buy));
+        sellPriceView.setText(rupiah(sell));
         spreadView.setText(String.format(Locale.US, "%.2f%%",
             Math.abs(buy-sell)/buy*100.0));
 
@@ -371,8 +373,8 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
             color = d > 0 ? Color.rgb(0,255,160)
                 : d < 0 ? Color.rgb(255,90,95)
                 : Color.rgb(245,200,90);
-            String arrow = d > 0 ? "▲ +" : d < 0 ? "▼ −" : "● ";
-            buyDeltaView.setText(arrow + "Rp" + rupiah(Math.abs(d))
+            String arrow = d > 0 ? "▲ " : d < 0 ? "▼ " : "● ";
+            buyDeltaView.setText(arrow + rupiah(Math.abs(d))
                );
         }
 
@@ -388,9 +390,10 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
             int sc = sd > 0 ? Color.rgb(0,255,160)
                 : sd < 0 ? Color.rgb(255,90,95)
                 : Color.rgb(245,200,90);
-            String sa = sd > 0 ? "▲ +" : sd < 0 ? "▼ −" : "● ";
-            sellDeltaView.setText(sa + "Rp" + rupiah(Math.abs(sd)));
+            String sa = sd > 0 ? "▲ " : sd < 0 ? "▼ " : "● ";
+            sellDeltaView.setText(sa + rupiah(Math.abs(sd)));
             sellDeltaView.setTextColor(sc);
+            sellPriceView.setTextColor(sc);
         }
         if (updateView != null) updateView.setText("Update: " + updated);
         if (statusView != null) statusView.setText("Status: " + status);
