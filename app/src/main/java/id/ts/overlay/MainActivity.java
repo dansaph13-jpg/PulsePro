@@ -174,7 +174,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
         buyDeltaView = new TextView(this);
         buyDeltaView.setText("Menunggu data");
         buyDeltaView.setTextColor(Color.LTGRAY);
-        buyDeltaView.setTextSize(10);
+        buyDeltaView.setTextSize(12);
         buyCard.addView(buyDeltaView);
 
         LinearLayout.LayoutParams buyLp =
@@ -211,7 +211,7 @@ TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
         sellDeltaView = new TextView(this);
         sellDeltaView.setText("Menunggu data");
         sellDeltaView.setTextColor(Color.LTGRAY);
-        sellDeltaView.setTextSize(10);
+        sellDeltaView.setTextSize(12);
         sellCard.addView(sellDeltaView);
 
         rightColumn.addView(sellCard, new LinearLayout.LayoutParams(-1, 0, 1f));

@@ -26,6 +26,7 @@ public class PriceOverlayService extends Service {
     private final ExecutorHolder worker = new ExecutorHolder();
     private WindowManager wm;
     private View panel;
+    private View floatingButton;
     private TextView display;
     private TextView buyPrice;
     private TextView buyDelta;
@@ -53,7 +54,7 @@ public class PriceOverlayService extends Service {
             if (!running) return;
             if (clock != null) {
                 clock.setText(new java.text.SimpleDateFormat(
-                    "ss", java.util.Locale.getDefault()
+                    "mm:ss", java.util.Locale.getDefault()
                 ).format(new java.util.Date()));
             }
             handler.postDelayed(this, 1000);
@@ -77,6 +78,7 @@ public class PriceOverlayService extends Service {
         wm = (WindowManager)getSystemService(WINDOW_SERVICE);
         running = true;
         addOverlay();
+        addFloatingButton();
         connectPusher();
     }
 
@@ -93,106 +95,205 @@ public class PriceOverlayService extends Service {
         return (int)(n * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+
+    private void addFloatingButton() {
+        if (floatingButton != null || wm == null) return;
+
+        final int d = dp(1);
+        TextView ts = new TextView(this);
+        ts.setText("CH");
+        ts.setTextColor(Color.rgb(245, 200, 90));
+        ts.setTextSize(13);
+        ts.setTypeface(null, android.graphics.Typeface.BOLD);
+        ts.setGravity(Gravity.CENTER);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(Color.rgb(7, 35, 31));
+        bg.setStroke(2*d, Color.rgb(0, 210, 145));
+        ts.setBackground(bg);
+
+        final WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+            44*d, 44*d,
+            Build.VERSION.SDK_INT >= 26
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.x = dp(10);
+        lp.y = dp(220);
+
+        final int[] start = new int[2];
+        final float[] touch = new float[2];
+        final boolean[] moved = new boolean[1];
+        final int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+
+        ts.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) {
+                start[0] = lp.x;
+                start[1] = lp.y;
+                touch[0] = e.getRawX();
+                touch[1] = e.getRawY();
+                moved[0] = false;
+                return true;
+            }
+            if (e.getAction() == MotionEvent.ACTION_MOVE) {
+                float dx = e.getRawX() - touch[0];
+                float dy = e.getRawY() - touch[1];
+                if (Math.abs(dx) > slop || Math.abs(dy) > slop)
+                    moved[0] = true;
+                if (moved[0]) {
+                    lp.x = start[0] + (int)dx;
+                    lp.y = start[1] + (int)dy;
+                    try { wm.updateViewLayout(floatingButton, lp); }
+                    catch (Exception ignored) {}
+                }
+                return true;
+            }
+            if (e.getAction() == MotionEvent.ACTION_UP) {
+                if (!moved[0]) {
+                    if (panel == null) addOverlay();
+                    else hideOverlay();
+                }
+                return true;
+            }
+            return true;
+        });
+
+        floatingButton = ts;
+        try { wm.addView(floatingButton, lp); }
+        catch (Exception e) { floatingButton = null; }
+    }
+
     private void addOverlay() {
-        int d = (int)(getResources().getDisplayMetrics().density + 0.5f);
-        int navy = Color.rgb(5, 35, 29);
-        int emerald = Color.rgb(0, 230, 150);
-        int muted = Color.rgb(150, 171, 184);
-        int white = Color.rgb(239, 247, 247);
+        if (panel != null || wm == null) return;
+        final int d = (int)(getResources().getDisplayMetrics().density + 0.5f);
+        final int navy = Color.rgb(5, 35, 29);
+        final int emerald = Color.rgb(0, 230, 150);
+        final int muted = Color.rgb(150, 171, 184);
+        final int white = Color.rgb(239, 247, 247);
+        final int gold = Color.rgb(212, 175, 55);
 
         android.widget.LinearLayout root = new android.widget.LinearLayout(this);
         root.setOrientation(android.widget.LinearLayout.VERTICAL);
-        root.setPadding(14*d, 12*d, 14*d, 13*d);
+        root.setPadding(10*d, 8*d, 10*d, 10*d);
 
-        android.graphics.drawable.GradientDrawable bg =
-            new android.graphics.drawable.GradientDrawable();
+        GradientDrawable bg = new GradientDrawable();
         bg.setColor(navy);
-        bg.setCornerRadius(16*d);
-        bg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
+        bg.setCornerRadius(14*d);
+        bg.setStroke(Math.max(1, d), gold);
         root.setBackground(bg);
 
-        android.widget.LinearLayout header = new android.widget.LinearLayout(this);
-        header.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
 
-        header.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        TextView close = new TextView(this);
-        close.setText("×");
-        close.setTextColor(muted);
-        close.setTextSize(22);
-        close.setGravity(Gravity.CENTER);
-        close.setOnClickListener(v -> hideOverlay());
-        header.addView(close, new android.widget.LinearLayout.LayoutParams(36*d, 30*d));
-        root.addView(header, new android.widget.LinearLayout.LayoutParams(-1, 30*d));
-
-        android.widget.LinearLayout priceRow =
-            new android.widget.LinearLayout(this);
+        android.widget.LinearLayout priceRow = new android.widget.LinearLayout(this);
         priceRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        priceRow.setGravity(Gravity.TOP);
+        priceRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        android.widget.LinearLayout buyCard =
-            new android.widget.LinearLayout(this);
+        // KOLOM BELI
+        android.widget.LinearLayout buyCard = new android.widget.LinearLayout(this);
         buyCard.setOrientation(android.widget.LinearLayout.VERTICAL);
-        buyCard.setPadding(7*d, 9*d, 3*d, 8*d);
-        android.graphics.drawable.GradientDrawable buyBg =
-            new android.graphics.drawable.GradientDrawable();
+        buyCard.setGravity(Gravity.CENTER_VERTICAL);
+        buyCard.setPadding(2*d, 5*d, 2*d, 5*d);
+
+        GradientDrawable buyBg = new GradientDrawable();
         buyBg.setColor(Color.rgb(5, 43, 33));
-        buyBg.setCornerRadius(9*d);
-        buyBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
+        buyBg.setCornerRadius(7*d);
         buyCard.setBackground(buyBg);
 
         buyPrice = new TextView(this);
         buyPrice.setText("Menunggu...");
         buyPrice.setTextColor(white);
-        buyPrice.setTextSize(19);
+        buyPrice.setTextSize(20);
         buyPrice.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         buyPrice.setSingleLine(true);
-        buyCard.addView(buyPrice);
+        buyPrice.setIncludeFontPadding(false);
+        buyPrice.setHorizontallyScrolling(true);
+        buyCard.addView(buyPrice,
+            new android.widget.LinearLayout.LayoutParams(-1, -2));
 
         buyDelta = new TextView(this);
         buyDelta.setText("Menunggu data");
         buyDelta.setTextColor(muted);
-        buyDelta.setTextSize(10);
-        buyCard.addView(buyDelta);
+        buyDelta.setTextSize(12);
+        buyDelta.setSingleLine(true);
+        buyDelta.setIncludeFontPadding(false);
+        buyCard.addView(buyDelta,
+            new android.widget.LinearLayout.LayoutParams(-1, -2));
 
         android.widget.LinearLayout.LayoutParams buyLp =
-            new android.widget.LinearLayout.LayoutParams(0, -1, 1.22f);
-        buyLp.rightMargin = 3*d;
+            new android.widget.LinearLayout.LayoutParams(0, 84*d, 1.20f);
+        buyLp.rightMargin = 4*d;
         priceRow.addView(buyCard, buyLp);
 
-        android.widget.LinearLayout rightColumn =
-            new android.widget.LinearLayout(this);
-        rightColumn.setOrientation(android.widget.LinearLayout.VERTICAL);
+        // PEMISAH GOLD 1: BELI | JUAL
+        View separator1 = new View(this);
+        separator1.setBackgroundColor(gold);
+        priceRow.addView(separator1,
+            new android.widget.LinearLayout.LayoutParams(Math.max(1, d), 64*d));
 
-        android.widget.LinearLayout sellCard =
-            new android.widget.LinearLayout(this);
+        // KOLOM JUAL
+        android.widget.LinearLayout sellCard = new android.widget.LinearLayout(this);
         sellCard.setOrientation(android.widget.LinearLayout.VERTICAL);
         sellCard.setGravity(Gravity.CENTER_VERTICAL);
-        sellCard.setPadding(3*d, 8*d, 2*d, 8*d);
-        android.graphics.drawable.GradientDrawable sellBg =
-            new android.graphics.drawable.GradientDrawable();
+        sellCard.setPadding(4*d, 5*d, 2*d, 5*d);
+
+        GradientDrawable sellBg = new GradientDrawable();
         sellBg.setColor(Color.rgb(10, 59, 45));
-        sellBg.setCornerRadius(8*d);
-        sellBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
+        sellBg.setCornerRadius(7*d);
         sellCard.setBackground(sellBg);
 
         sellPrice = new TextView(this);
         sellPrice.setText("—");
         sellPrice.setTextColor(white);
-        sellPrice.setTextSize(12);
+        sellPrice.setTextSize(16);
         sellPrice.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         sellPrice.setSingleLine(true);
-        sellCard.addView(sellPrice);
+        sellPrice.setIncludeFontPadding(false);
+        sellPrice.setHorizontallyScrolling(true);
+        sellCard.addView(sellPrice,
+            new android.widget.LinearLayout.LayoutParams(-1, -2));
 
         sellDelta = new TextView(this);
         sellDelta.setText("Menunggu");
         sellDelta.setTextColor(muted);
-        sellDelta.setTextSize(8);
-        sellCard.addView(sellDelta);
+        sellDelta.setTextSize(12);
+        sellDelta.setSingleLine(true);
+        sellDelta.setIncludeFontPadding(false);
+        sellCard.addView(sellDelta,
+            new android.widget.LinearLayout.LayoutParams(-1, -2));
 
         android.widget.LinearLayout.LayoutParams sellLp =
-            new android.widget.LinearLayout.LayoutParams(-1, 0, 1f);
-        rightColumn.addView(sellCard, sellLp);
+            new android.widget.LinearLayout.LayoutParams(0, 84*d, 1.0f);
+        sellLp.leftMargin = 4*d;
+        sellLp.rightMargin = 4*d;
+        priceRow.addView(sellCard, sellLp);
+
+        // PEMISAH GOLD 2: JUAL | JAM + SPREAD
+        View separator2 = new View(this);
+        separator2.setBackgroundColor(gold);
+        priceRow.addView(separator2,
+            new android.widget.LinearLayout.LayoutParams(Math.max(1, d), 64*d));
+
+        // KOLOM KANAN: JAM DI ATAS, SPREAD DI BAWAH
+        android.widget.LinearLayout rightColumn =
+            new android.widget.LinearLayout(this);
+        rightColumn.setOrientation(android.widget.LinearLayout.VERTICAL);
+        rightColumn.setGravity(Gravity.CENTER);
+        rightColumn.setPadding(2*d, 0, 0, 0);
+
+        clock = new TextView(this);
+        clock.setText("00:00");
+        clock.setTextColor(emerald);
+        clock.setTextSize(11);
+        clock.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        clock.setSingleLine(true);
+        clock.setGravity(Gravity.CENTER);
+        clock.setIncludeFontPadding(false);
+        rightColumn.addView(clock,
+            new android.widget.LinearLayout.LayoutParams(-1, 24*d));
 
         spreadValue = new TextView(this);
         spreadValue.setText("—");
@@ -201,45 +302,21 @@ public class PriceOverlayService extends Service {
         spreadValue.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         spreadValue.setSingleLine(true);
         spreadValue.setGravity(Gravity.CENTER);
-        android.graphics.drawable.GradientDrawable spreadBg =
-            new android.graphics.drawable.GradientDrawable();
-        spreadBg.setColor(Color.rgb(5, 43, 33));
-        spreadBg.setCornerRadius(6*d);
-        spreadBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
-        spreadValue.setBackground(spreadBg);
-        spreadValue.setPadding(2*d, 1*d, 2*d, 1*d);
+        spreadValue.setIncludeFontPadding(false);
         rightColumn.addView(spreadValue,
-            new android.widget.LinearLayout.LayoutParams(-1, 21*d));
-
-        clock = new TextView(this);
-        clock.setTextColor(emerald);
-        clock.setTextSize(10);
-        clock.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        clock.setSingleLine(true);
-        clock.setGravity(Gravity.CENTER);
-        android.graphics.drawable.GradientDrawable clockBg =
-            new android.graphics.drawable.GradientDrawable();
-        clockBg.setColor(Color.rgb(5, 43, 33));
-        clockBg.setCornerRadius(6*d);
-        clockBg.setStroke(Math.max(1, d), Color.rgb(212, 175, 55));
-        clock.setBackground(clockBg);
-        clock.setPadding(2*d, 1*d, 2*d, 1*d);
-        android.widget.LinearLayout.LayoutParams clockLp =
-            new android.widget.LinearLayout.LayoutParams(-1, 20*d);
-        clockLp.topMargin = 2*d;
-        rightColumn.addView(clock, clockLp);
+            new android.widget.LinearLayout.LayoutParams(-1, 24*d));
 
         priceRow.addView(rightColumn,
-            new android.widget.LinearLayout.LayoutParams(0, -1, 1f));
+            new android.widget.LinearLayout.LayoutParams(0, 64*d, 0.75f));
 
         android.widget.LinearLayout.LayoutParams priceRowLp =
-            new android.widget.LinearLayout.LayoutParams(-1, 120*d);
-        priceRowLp.topMargin = 9*d;
+            new android.widget.LinearLayout.LayoutParams(-1, 90*d);
+        priceRowLp.topMargin = 4*d;
         root.addView(priceRow, priceRowLp);
 
         panel = root;
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-            300*d, WindowManager.LayoutParams.WRAP_CONTENT,
+            320*d, WindowManager.LayoutParams.WRAP_CONTENT,
             Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE,
@@ -276,7 +353,6 @@ public class PriceOverlayService extends Service {
         handler.removeCallbacks(clockTick);
         handler.post(clockTick);
     }
-
 
     private static String rupiah(double n) {
         return NumberFormat.getIntegerInstance(new Locale("id", "ID"))
@@ -504,23 +580,30 @@ public class PriceOverlayService extends Service {
         buyPrice = null;
         buyDelta = null;
         sellPrice = null;
+        sellDelta = null;
         spreadValue = null;
         clock = null;
     }
 
     private Notification buildNotification() {
         String line;
+
         if (buy > 0 && sell > 0) {
             double br = minuteReference();
             double sr = sellMinuteReference();
+
             String ba = br <= 0 ? "⚪" : buy > br ? "🟢" : buy < br ? "🔴" : "⚪";
             String sa = sr <= 0 ? "⚪" : sell > sr ? "🟢" : sell < sr ? "🔴" : "⚪";
+
+            String bd = br <= 0 ? "—" : rupiah(Math.abs(buy - br));
+            String sd = sr <= 0 ? "—" : rupiah(Math.abs(sell - sr));
+
             String sp = String.format(Locale.US, "%.2f%%",
                 Math.abs(buy - sell) / buy * 100.0);
-            String tm = new java.text.SimpleDateFormat(
-                "HH.mm", Locale.getDefault()).format(new java.util.Date());
-            line = rupiah(buy) + " " + ba + " | " + rupiah(sell) + " "
-                + sa + " | " + sp + " | " + tm;
+
+            line = rupiah(buy) + " " + ba + " " + bd
+                + " | " + rupiah(sell) + " " + sa + " " + sd
+                + " | " + sp;
         } else {
             line = "Menunggu data harga Treasury";
         }
@@ -534,8 +617,6 @@ public class PriceOverlayService extends Service {
             : new Notification.Builder(this);
 
         return b.setContentTitle(line)
-            .setContentText(line)
-            .setStyle(new Notification.BigTextStyle().bigText(line))
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentIntent(PendingIntent.getActivity(this, 0, open, flags))
             .setOnlyAlertOnce(true)
@@ -550,8 +631,9 @@ public class PriceOverlayService extends Service {
     }
 
     @Override public int onStartCommand(Intent i, int flags, int startId) {
-        if (running && panel == null && Settings.canDrawOverlays(this)) {
-            addOverlay();
+        if (running && Settings.canDrawOverlays(this)) {
+            if (floatingButton == null) addFloatingButton();
+            if (panel == null) addOverlay();
         }
         return START_STICKY;
     }
@@ -574,6 +656,11 @@ public class PriceOverlayService extends Service {
         if (panel != null && wm != null) {
             try { wm.removeView(panel); } catch (Exception ignored) {}
         }
+        panel = null;
+        if (floatingButton != null && wm != null) {
+            try { wm.removeView(floatingButton); } catch (Exception ignored) {}
+        }
+        floatingButton = null;
         stopForeground(true);
         super.onDestroy();
     }
