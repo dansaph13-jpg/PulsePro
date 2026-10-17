@@ -11,3 +11,16 @@ local.properties
 backup_*/
 patch_*.py
 update
+
+# Backup source lokal
+*.pre_v*
+*.debugbak
+*.bak
+*.bak_*
+
+# Hasil build dan file sementara
+*.idsig
+release/*.apk
+*.log
+catalyst_history.json
+patch_*.sh
