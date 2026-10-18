@@ -7,8 +7,7 @@
 
     <application android:icon="@drawable/ic_ts_crown" android:roundIcon="@drawable/ic_ts_crown"
         android:theme="@style/AppTheme"
-        android:label="TS"
-        android:usesCleartextTraffic="false">
+        android:label="Cuan Hunter"
 
         <activity
             android:name="id.ts.overlay.USNewsActivity"
@@ -23,6 +22,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name="id.ts.overlay.MasterDataActivity" android:exported="false" />
         <service
             android:name="id.ts.overlay.PriceOverlayService"
             android:exported="false"
