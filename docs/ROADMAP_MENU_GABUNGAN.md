@@ -71,3 +71,12 @@ Setiap kali satu tahap selesai:
 
 ## Status awal
 Konsep sudah ditetapkan. Tahap 1 belum dinyatakan selesai.
+
+## CHECKPOINT NEWS MINIDB 2026-10-19
+- [x] NEWS: refresh analisis USD/XAU, tombol GANTI API KEY, periode Hari Ini, Besok, Lusa, Pekan Ini, Pekan Depan.
+- [x] MiniDB: nama ekspor CSV default minidb.csv.
+- [x] MiniDB: impor CSV menggunakan transaksi database.
+- [x] Build gabungan: gradle assembleDebug — BUILD SUCCESSFUL.
+- [ ] Uji NEWS dan impor/ekspor MiniDB pada perangkat.
+- [ ] Menu 4: NOTED, modul catatan lokal persisten.
+- [ ] Build dan verifikasi APK Menu 4.

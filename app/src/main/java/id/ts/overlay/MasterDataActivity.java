@@ -846,7 +846,7 @@ EditText field(String hint) {
         if (req == 101) {
             i.setType("*/*");
         } else {
-            i.putExtra("android.intent.extra.TITLE", "MiniDataManager_backup.csv");
+            i.putExtra("android.intent.extra.TITLE", "minidb.csv");
         }
         startActivityForResult(i, req);
     }
@@ -945,6 +945,9 @@ EditText field(String hint) {
                     getContentResolver().openInputStream(uri),
                     StandardCharsets.UTF_8))) {
 
+            android.database.sqlite.SQLiteDatabase tx = db.getWritableDatabase();
+            tx.beginTransaction();
+            try {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) continue;
@@ -1007,6 +1010,10 @@ EditText field(String hint) {
 
                 db.save(-1, no, phone, name, status, email);
                 imported++;
+            }
+            tx.setTransactionSuccessful();
+            } finally {
+                tx.endTransaction();
             }
 
             refresh();

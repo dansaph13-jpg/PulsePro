@@ -27,6 +27,11 @@ public class PriceOverlayService extends Service {
     private WindowManager wm;
     private View panel;
     private View floatingButton;
+    private View floatingButtonTS;
+    private long lastFloatingClickAt = 0L;
+    private View edgeTrigger;
+    private AlertDialog menuDialog;
+    private final Runnable autoHideFloatingTask = this::hideFloatingButton;
     private TextView display;
     private TextView buyPrice;
     private TextView buyDelta;
@@ -77,8 +82,8 @@ public class PriceOverlayService extends Service {
         }
         wm = (WindowManager)getSystemService(WINDOW_SERVICE);
         running = true;
-        addOverlay();
         addFloatingButton();
+        addEdgeTrigger();
         connectPusher();
     }
 
@@ -96,25 +101,209 @@ public class PriceOverlayService extends Service {
     }
 
 
+
+
+    private WindowManager.LayoutParams floatingParams(int y) {
+        int type = Build.VERSION.SDK_INT >= 26
+            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            : WindowManager.LayoutParams.TYPE_PHONE;
+        WindowManager.LayoutParams p = new WindowManager.LayoutParams(
+            dp(48), dp(48), type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT);
+        p.gravity = Gravity.TOP | Gravity.RIGHT;
+        p.x = dp(10);
+        p.y = y;
+        return p;
+    }
+
+    private View createFloatButton(String label, int fill, Runnable action) {
+        TextView v = new TextView(this);
+        v.setBackgroundResource(R.drawable.bg_ft_shield);
+
+        v.setText(label);
+        v.setTextColor(0xFFFFD875);
+        v.setTextSize(label.equals("TS") ? 14 : 18);
+        v.setTypeface(android.graphics.Typeface.create(
+            "sans-serif-condensed", android.graphics.Typeface.BOLD));
+        v.setGravity(Gravity.CENTER);
+
+        android.graphics.Path outerPath = new android.graphics.Path();
+        outerPath.moveTo(50, 3);
+        outerPath.lineTo(94, 18);
+        outerPath.lineTo(88, 59);
+        outerPath.quadTo(82, 82, 50, 97);
+        outerPath.quadTo(18, 82, 12, 59);
+        outerPath.lineTo(6, 18);
+        outerPath.close();
+
+        android.graphics.Path innerPath = new android.graphics.Path();
+        innerPath.moveTo(50, 10);
+        innerPath.lineTo(86, 22);
+        innerPath.lineTo(81, 57);
+        innerPath.quadTo(76, 77, 50, 89);
+        innerPath.quadTo(24, 77, 19, 57);
+        innerPath.lineTo(14, 22);
+        innerPath.close();
+
+        android.graphics.drawable.ShapeDrawable outer =
+            new android.graphics.drawable.ShapeDrawable(
+                new android.graphics.drawable.shapes.PathShape(
+                    outerPath, 100, 100));
+        outer.getPaint().setColor(0xFFD8B15A);
+        outer.getPaint().setAntiAlias(true);
+
+        android.graphics.drawable.ShapeDrawable inner =
+            new android.graphics.drawable.ShapeDrawable(
+                new android.graphics.drawable.shapes.PathShape(
+                    innerPath, 100, 100));
+        inner.getPaint().setColor(fill);
+        inner.getPaint().setAntiAlias(true);
+
+        v.setBackground(new android.graphics.drawable.LayerDrawable(
+            new android.graphics.drawable.Drawable[]{outer, inner}));
+        v.setElevation(dp(8));
+
+        final float[] downX = new float[1];
+        final float[] downY = new float[1];
+        final int[] startX = new int[1];
+        final int[] startY = new int[1];
+        final long[] downTime = new long[1];
+        final boolean[] moved = new boolean[1];
+
+        v.setOnClickListener(view -> {
+            handler.removeCallbacks(autoHideFloatingTask);
+            handler.postDelayed(autoHideFloatingTask, 600000L);
+            action.run();
+        });
+
+        v.setOnTouchListener((view, event) -> {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN: {
+                    downX[0] = event.getRawX();
+                    downY[0] = event.getRawY();
+                    downTime[0] = android.os.SystemClock.elapsedRealtime();
+                    moved[0] = false;
+
+                    android.view.ViewGroup.LayoutParams raw =
+                        view.getLayoutParams();
+                    if (raw instanceof WindowManager.LayoutParams) {
+                        WindowManager.LayoutParams p =
+                            (WindowManager.LayoutParams) raw;
+                        startX[0] = p.x;
+                        startY[0] = p.y;
+                    }
+                    return true;
+                }
+
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = event.getRawX() - downX[0];
+                    float dy = event.getRawY() - downY[0];
+
+                    if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6)) {
+                        moved[0] = true;
+                    }
+
+                    if (moved[0] && wm != null) {
+                        android.view.ViewGroup.LayoutParams raw =
+                            view.getLayoutParams();
+                        if (raw instanceof WindowManager.LayoutParams) {
+                            WindowManager.LayoutParams p =
+                                (WindowManager.LayoutParams) raw;
+                            p.x = Math.max(0, startX[0] - (int) dx);
+                            p.y = Math.max(0, startY[0] + (int) dy);
+                            try {
+                                wm.updateViewLayout(view, p);
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    return true;
+                }
+
+                case MotionEvent.ACTION_UP: {
+                    long held = android.os.SystemClock.elapsedRealtime()
+                        - downTime[0];
+
+                    if (!moved[0] && held >= 600L) {
+                        handler.removeCallbacks(autoHideFloatingTask);
+                        hideFloatingButton();
+                    } else if (!moved[0]) {
+                        view.performClick();
+                    }
+                    return true;
+                }
+
+                case MotionEvent.ACTION_CANCEL:
+                    return true;
+            }
+            return true;
+        });
+
+        v.setBackgroundResource(R.drawable.bg_ft_shield);
+        return v;
+    }
+
     private void addFloatingButton() {
-        if (floatingButton != null || wm == null) return;
+        if (wm == null) wm = (WindowManager)getSystemService(WINDOW_SERVICE);
+        if (wm == null) return;
 
-        final int d = dp(1);
-        TextView ts = new TextView(this);
-        ts.setText("CH");
-        ts.setTextColor(Color.rgb(245, 200, 90));
-        ts.setTextSize(13);
-        ts.setTypeface(null, android.graphics.Typeface.BOLD);
-        ts.setGravity(Gravity.CENTER);
+        if (floatingButton == null) {
+            floatingButton = createFloatButton("C", 0xFF0A3B30, () -> openMiniDb());
+            WindowManager.LayoutParams p = floatingParams(dp(220));
+            try { wm.addView(floatingButton, p); }
+            catch (Exception e) { floatingButton = null; }
+        }
+        if (floatingButtonTS == null) {
+            floatingButtonTS = createFloatButton("TS", 0xFF153A32, () -> { if (panel == null) addOverlay(); else hideOverlay(); });
+            WindowManager.LayoutParams p = floatingParams(dp(276));
+            try { wm.addView(floatingButtonTS, p); }
+            catch (Exception e) { floatingButtonTS = null; }
+        }
 
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(Color.rgb(7, 35, 31));
-        bg.setStroke(2*d, Color.rgb(0, 210, 145));
-        ts.setBackground(bg);
+        handler.removeCallbacks(autoHideFloatingTask);
+        handler.postDelayed(autoHideFloatingTask, 600000L);
+    }
 
-        final WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-            44*d, 44*d,
+    private void showFloatingButton() {
+        if (floatingButton == null || floatingButtonTS == null) addFloatingButton();
+        if (floatingButton != null) floatingButton.setVisibility(View.VISIBLE);
+        if (floatingButtonTS != null) floatingButtonTS.setVisibility(View.VISIBLE);
+        handler.removeCallbacks(autoHideFloatingTask);
+        handler.postDelayed(autoHideFloatingTask, 600000L);
+    }
+
+    private void hideFloatingButton() {
+        if (floatingButton != null) floatingButton.setVisibility(View.GONE);
+        if (floatingButtonTS != null) floatingButtonTS.setVisibility(View.GONE);
+    }
+
+    private void addEdgeTrigger() {
+        if (edgeTrigger != null || wm == null) return;
+        View edge = new View(this);
+        edge.setBackgroundColor(Color.TRANSPARENT);
+        final float[] downX = new float[1];
+        final float[] downY = new float[1];
+
+        edge.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) {
+                downX[0] = e.getRawX();
+                downY[0] = e.getRawY();
+                return true;
+            }
+            if (e.getAction() == MotionEvent.ACTION_UP) {
+                float dx = e.getRawX() - downX[0];
+                float dy = e.getRawY() - downY[0];
+                if (dx >= dp(48) && Math.abs(dx) > Math.abs(dy)) {
+                    showFloatingButton();
+                }
+                return true;
+            }
+            return true;
+        });
+
+        WindowManager.LayoutParams p = new WindowManager.LayoutParams(
+            dp(12), WindowManager.LayoutParams.MATCH_PARENT,
             Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE,
@@ -122,50 +311,60 @@ public class PriceOverlayService extends Service {
                 | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT);
-        lp.gravity = Gravity.TOP | Gravity.START;
-        lp.x = dp(10);
-        lp.y = dp(220);
+        p.gravity = Gravity.TOP | Gravity.LEFT;
+        p.x = 0;
+        p.y = 0;
+        edgeTrigger = edge;
+        try { wm.addView(edgeTrigger, p); }
+        catch (Exception e) { edgeTrigger = null; }
+    }
 
-        final int[] start = new int[2];
-        final float[] touch = new float[2];
-        final boolean[] moved = new boolean[1];
-        final int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+    private void openMiniDb() {
+        Intent i = new Intent(this, MasterDataActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(i);
+        } catch (Exception e) {
+            android.util.Log.e("PulsePro", "Gagal membuka Mini DB", e);
+        }
+    }
 
-        ts.setOnTouchListener((v, e) -> {
-            if (e.getAction() == MotionEvent.ACTION_DOWN) {
-                start[0] = lp.x;
-                start[1] = lp.y;
-                touch[0] = e.getRawX();
-                touch[1] = e.getRawY();
-                moved[0] = false;
-                return true;
-            }
-            if (e.getAction() == MotionEvent.ACTION_MOVE) {
-                float dx = e.getRawX() - touch[0];
-                float dy = e.getRawY() - touch[1];
-                if (Math.abs(dx) > slop || Math.abs(dy) > slop)
-                    moved[0] = true;
-                if (moved[0]) {
-                    lp.x = start[0] + (int)dx;
-                    lp.y = start[1] + (int)dy;
-                    try { wm.updateViewLayout(floatingButton, lp); }
-                    catch (Exception ignored) {}
-                }
-                return true;
-            }
-            if (e.getAction() == MotionEvent.ACTION_UP) {
-                if (!moved[0]) {
-                    if (panel == null) addOverlay();
-                    else hideOverlay();
-                }
-                return true;
-            }
-            return true;
+    private void showMenu() {
+        if (wm == null) wm = (WindowManager)getSystemService(WINDOW_SERVICE);
+        if (wm == null) return;
+
+        if (menuDialog != null && menuDialog.isShowing()) {
+            menuDialog.dismiss();
+            menuDialog = null;
+            return;
+        }
+
+        AlertDialog.Builder b = new AlertDialog.Builder(this);
+        b.setTitle("CUAN HUNTER");
+        b.setItems(new String[]{"MASTER DATA"}, (dialog, which) -> {
+            Intent i = new Intent(this, MainActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            i.putExtra("open_master_data", true);
+            try {
+                startActivity(i);
+            } catch (Exception ignored) {}
         });
 
-        floatingButton = ts;
-        try { wm.addView(floatingButton, lp); }
-        catch (Exception e) { floatingButton = null; }
+        menuDialog = b.create();
+        try {
+            if (Build.VERSION.SDK_INT >= 26
+                    && menuDialog.getWindow() != null) {
+                menuDialog.getWindow().setType(
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            menuDialog.show();
+        } catch (Exception e) {
+            menuDialog = null;
+        }
     }
 
     private void addOverlay() {
@@ -287,7 +486,7 @@ public class PriceOverlayService extends Service {
         clock = new TextView(this);
         clock.setText("00:00");
         clock.setTextColor(emerald);
-        clock.setTextSize(11);
+        clock.setTextSize(12);
         clock.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         clock.setSingleLine(true);
         clock.setGravity(Gravity.CENTER);
@@ -298,7 +497,7 @@ public class PriceOverlayService extends Service {
         spreadValue = new TextView(this);
         spreadValue.setText("—");
         spreadValue.setTextColor(emerald);
-        spreadValue.setTextSize(11);
+        spreadValue.setTextSize(12);
         spreadValue.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         spreadValue.setSingleLine(true);
         spreadValue.setGravity(Gravity.CENTER);
@@ -632,13 +831,18 @@ public class PriceOverlayService extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int startId) {
         if (running && Settings.canDrawOverlays(this)) {
-            if (floatingButton == null) addFloatingButton();
-            if (panel == null) addOverlay();
+            showFloatingButton();
+            if (edgeTrigger == null) addEdgeTrigger();
         }
         return START_STICKY;
     }
 
     @Override public void onDestroy() {
+        if (floatingButtonTS != null && wm != null) {
+            try { wm.removeView(floatingButtonTS); } catch (Exception ignored) {}
+            floatingButtonTS = null;
+        }
+
         running = false;
         handler.removeCallbacksAndMessages(null);
         worker.executor.shutdownNow();
@@ -657,10 +861,18 @@ public class PriceOverlayService extends Service {
             try { wm.removeView(panel); } catch (Exception ignored) {}
         }
         panel = null;
+        if (menuDialog != null) {
+            try { menuDialog.dismiss(); } catch (Exception ignored) {}
+            menuDialog = null;
+        }
         if (floatingButton != null && wm != null) {
             try { wm.removeView(floatingButton); } catch (Exception ignored) {}
         }
         floatingButton = null;
+        if (edgeTrigger != null && wm != null) {
+            try { wm.removeView(edgeTrigger); } catch (Exception ignored) {}
+        }
+        edgeTrigger = null;
         stopForeground(true);
         super.onDestroy();
     }

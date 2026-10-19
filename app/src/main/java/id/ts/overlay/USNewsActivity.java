@@ -1,411 +1,706 @@
 package id.ts.overlay;
 
-import android.app.*;
-import android.os.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.Locale;
+import java.util.List;
+import java.util.Comparator;
+import java.util.Collections;
+import java.util.Calendar;
+import java.util.ArrayList;
+import java.net.URL;
+import java.net.HttpURLConnection;
+import org.json.JSONObject;
+import org.json.JSONArray;
+import android.os.Looper;
+import android.os.Handler;
+import android.widget.Toast;
+import android.widget.EditText;
+import android.text.InputType;
+import android.app.AlertDialog;
+import android.app.Activity;
+import android.os.Bundle;
 import android.graphics.Color;
-import android.view.*;
-import android.widget.*;
-import org.json.*;
-import java.net.*;
-import java.io.*;
-import java.time.*;
-import java.time.format.*;
-import java.util.*;
-import java.util.concurrent.*;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
+import android.view.View;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 
 public class USNewsActivity extends Activity {
-    LinearLayout list;
-    TextView status;
-    Handler handler = new Handler(Looper.getMainLooper());
-    ExecutorService worker = Executors.newSingleThreadExecutor();
-    boolean active = false;
 
-    int dp(float n) {
-        return (int)(n * getResources().getDisplayMetrics().density + 0.5f);
+    private final int BG = Color.rgb(17, 24, 39);
+    private final int PANEL = Color.rgb(31, 41, 55);
+    private final int GOLD = Color.rgb(212, 175, 55);
+    private final int EMERALD = Color.rgb(16, 120, 80);
+
+    private LinearLayout root;
+    private LinearLayout content;
+    private WebView calendarView;
+    private Button calendarTab;
+    private Button analysisTab;
+    private String currentTab = "calendar";
+
+    private String selectedPeriod = "Hari Ini";
+    private LinearLayout analysisPanel;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService apiExecutor = Executors.newSingleThreadExecutor();
+    private static final String PREFS = "pulsepro_news_settings";
+    private static final String PULSEPRO_API_KEY = "earnings_api_key";
+
+
+    private int dp(float n) {
+        return (int) (n * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    @Override public void onCreate(Bundle b) {
-        super.onCreate(b);
-        getWindow().setStatusBarColor(Color.rgb(17,24,39));
-        getWindow().setNavigationBarColor(Color.rgb(17,24,39));
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-        LinearLayout root = new LinearLayout(this);
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
+
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16),dp(18),dp(16),dp(10));
-        root.setBackgroundColor(Color.rgb(17,24,39));
+        root.setPadding(dp(12), dp(12), dp(12), dp(8));
+        root.setBackgroundColor(BG);
 
         TextView title = new TextView(this);
-        title.setText("today".equals(getIntent().getStringExtra("period"))
-            ? "🇺🇸 US NEWS HARI INI" : "🇺🇸 US NEWS MINGGUAN");
-        title.setTextSize(25);
-        title.setTextColor(Color.rgb(212,175,55));
-        root.addView(title);
+        title.setText("NEWS UPDATE");
+        title.setTextColor(GOLD);
+        title.setTextSize(23);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, dp(5), 0, dp(14));
+        root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("KALENDER EKONOMI AS • WAKTU WIB");
-        subtitle.setTextColor(Color.LTGRAY);
-        subtitle.setTextSize(12);
-        root.addView(subtitle);
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
 
-        Button refresh = new Button(this);
-        refresh.setText("PERBARUI DATA");
-        root.addView(refresh);
-        refresh.setOnClickListener(v -> loadData());
+        calendarTab = new Button(this);
+        calendarTab.setText("KALENDER");
+        calendarTab.setAllCaps(false);
 
-        status = new TextView(this);
-        status.setTextColor(Color.LTGRAY);
-        status.setPadding(0,dp(8),0,dp(8));
-        root.addView(status);
+        analysisTab = new Button(this);
+        analysisTab.setText("ANALISIS USD/XAU");
+        analysisTab.setAllCaps(false);
 
+        tabs.addView(analysisTab,
+                new LinearLayout.LayoutParams(0, dp(48), 1));
+        tabs.addView(calendarTab,
+                new LinearLayout.LayoutParams(0, dp(48), 1));
+
+        root.addView(tabs);
+
+content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        root.addView(content,
+                new LinearLayout.LayoutParams(-1, 0, 1));
+
+        calendarView = new WebView(this);
+        WebSettings settings = calendarView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
+
+        calendarView.setWebViewClient(new WebViewClient());
+        calendarView.setWebChromeClient(new WebChromeClient());
+
+        String html =
+            "<!DOCTYPE html><html><head>" +
+            "<meta name='viewport' content='width=device-width," +
+            "initial-scale=1,maximum-scale=3,user-scalable=yes'>" +
+            "<meta charset='UTF-8'>" +
+            "<style>" +
+            "html,body{margin:0;padding:0;background:#111827;" +
+            "font-family:Arial,sans-serif;color:#fff;}" +
+            "iframe{display:block;width:100%;height:900px;border:0;}" +
+            ".credit{font-size:11px;padding:10px 4px;color:#ddd;}" +
+            "a{color:#65a9ff;}" +
+            "</style></head><body>" +
+            "<iframe title='Kalender Ekonomi Investing.com' " +
+            "src='https://sslecal2.investing.com?" +
+            "columns=exc_flags,exc_currency,exc_importance," +
+            "exc_actual,exc_forecast,exc_previous" +
+            "&amp;category=_employment,_economicActivity,_inflation," +
+            "_credit,_centralBanks,_confidenceIndex,_balance,_Bonds" +
+            "&amp;importance=2,3" +
+            "&amp;features=datepicker" +
+            "&amp;countries=5,48" +
+            "&amp;calType=week" +
+            "&amp;timeZone=27" +
+            "&amp;lang=54' " +
+            "allowtransparency='true' loading='eager'></iframe>" +
+            "<div class='credit'>Kalender ekonomi disediakan oleh " +
+            "<a href='https://id.investing.com' " +
+            "target='_blank'>Investing.com Indonesia</a></div>" +
+            "</body></html>";
+
+        calendarView.loadDataWithBaseURL(
+                "https://id.investing.com/",
+                html, "text/html", "UTF-8", null);
+
+        calendarTab.setOnClickListener(v -> showCalendar());
+        analysisTab.setOnClickListener(v -> showAnalysis());
+
+setContentView(root);
+        showAnalysis();
+    }
+
+    private void styleTab(Button button, boolean selected) {
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(12);
+        button.setBackgroundTintList(
+            android.content.res.ColorStateList.valueOf(
+                selected ? EMERALD : PANEL));
+    }
+
+    private void showCalendar() {
+        currentTab = "calendar";
+        styleTab(calendarTab, true);
+        styleTab(analysisTab, false);
+
+        content.removeAllViews();
+        if (calendarView.getParent() != null) {
+            ((android.view.ViewGroup) calendarView.getParent())
+                    .removeView(calendarView);
+        }
+        content.addView(calendarView,
+                new LinearLayout.LayoutParams(-1, -1));
+    }
+
+
+    private void showAnalysis() {
+        currentTab = "analysis";
+        styleTab(analysisTab, true);
+        styleTab(calendarTab, false);
+
+        content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(list);
-        root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        analysisPanel = new LinearLayout(this);
+        analysisPanel.setOrientation(LinearLayout.VERTICAL);
+        analysisPanel.setPadding(dp(8), dp(10), dp(8), dp(18));
+        scroll.addView(analysisPanel);
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
 
-        TextView credit = new TextView(this);
-        credit.setText("Data: FinanceCalendar.com");
-        credit.setTextColor(Color.LTGRAY);
-        credit.setTextSize(12);
-        credit.setPadding(0,dp(10),0,0);
-        root.addView(credit);
+        LinearLayout headerRow = new LinearLayout(this);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView heading = makeText("ANALISIS USD/XAU", 18, GOLD, true);
+        headerRow.addView(heading, new LinearLayout.LayoutParams(0, dp(44), 1));
+        Button refresh = new Button(this);
+        refresh.setText("↻");
+        refresh.setTextSize(23);
+        refresh.setAllCaps(false);
+        refresh.setContentDescription("Muat ulang data");
+        refresh.setTextColor(Color.WHITE);
+        refresh.setBackgroundTintList(android.content.res.ColorStateList.valueOf(EMERALD));
+        headerRow.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(44)));
+        refresh.setOnClickListener(v -> showAnalysis());
+        analysisPanel.addView(headerRow);
 
-        setContentView(root);
-        loadData();
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        active = true;
-        handler.postDelayed(tick,60000);
-    }
-
-    @Override protected void onPause() {
-        active = false;
-        handler.removeCallbacks(tick);
-        super.onPause();
-    }
-
-    Runnable tick = new Runnable() {
-        @Override public void run() {
-            if (active) {
-                loadData();
-                handler.postDelayed(this,60000);
-            }
+        LinearLayout periods = new LinearLayout(this);
+        periods.setOrientation(LinearLayout.HORIZONTAL);
+        periods.setGravity(Gravity.CENTER);
+        String[] labels = {"Hari Ini", "Besok", "Lusa", "Pekan Ini", "Pekan Depan"};
+        for (String label : labels) {
+            Button b = new Button(this);
+            b.setText(label);
+            b.setAllCaps(false);
+            b.setTextSize(10);
+            b.setPadding(dp(2), 0, dp(2), 0);
+            b.setTextColor(Color.WHITE);
+            b.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(
+                    label.equals(selectedPeriod) ? EMERALD : PANEL));
+            LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(0, dp(44), 1);
+            lp.setMargins(dp(1), 0, dp(1), dp(8));
+            periods.addView(b, lp);
+            b.setOnClickListener(v -> {
+                selectedPeriod = label;
+                showAnalysis();
+            });
         }
-    };
+        analysisPanel.addView(periods);
 
-    void loadData() {
-        status.setText("Mengambil jadwal dan data aktual...");
-        worker.execute(() -> {
-            String result = "";
-            try {
-                LocalDate today = LocalDate.now(ZoneId.of("Asia/Jakarta"));
-                String from = today.toString();
-                String to = today.toString();
-                URL url = new URL(
-                    "https://www.financecalendar.com/wp-json/fc/v1/calendar"
-                    + "?from=" + from + "&to=" + to
-                    + "&limit=200");
+        TextView source = makeText(
+            "SUMBER: Earnings API | P = Previous, F = Forecast, A = Actual",
+            11, Color.LTGRAY, false);
+        source.setPadding(dp(4), 0, dp(4), dp(8));
+        analysisPanel.addView(source);
 
-                HttpURLConnection c =
-                    (HttpURLConnection)url.openConnection();
-                c.setConnectTimeout(15000);
-                c.setReadTimeout(15000);
-                c.setRequestMethod("GET");
-                c.setRequestProperty("Accept","application/json");
+        Button changeKey = new Button(this);
+        changeKey.setText("GANTI API KEY");
+        changeKey.setAllCaps(false);
+        changeKey.setTextSize(12);
+        changeKey.setOnClickListener(v -> showApiKeyDialog());
+        analysisPanel.addView(changeKey,
+            new LinearLayout.LayoutParams(-1, dp(42)));
 
-                InputStream in = c.getInputStream();
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                int n;
-                while ((n = in.read(buf)) != -1) out.write(buf,0,n);
-                result = out.toString("UTF-8");
-                in.close();
-                c.disconnect();
-            } catch (Exception e) {
-                result = "";
-            }
-
-            if (!result.isEmpty()) {
-                try {
-                    LocalDate today = LocalDate.now(ZoneId.of("Asia/Jakarta"));
-                    String html = fetchText(
-                        "https://forex.tradingcharts.com/economic_calendar/"
-                        + today.toString() + ".html?code=USD");
-
-                    if (!html.isEmpty()) {
-                        ArrayList<String[]> rows = tradingRows(html);
-                        JSONObject root = new JSONObject(result);
-                        JSONArray events = root.optJSONArray("events");
-                        if (events == null) events = root.optJSONArray("data");
-                        if (events == null && root.optJSONObject("data") != null)
-                            events = root.optJSONObject("data").optJSONArray("events");
-
-                        if (events != null) {
-                            for (int i = 0; i < events.length(); i++) {
-                                JSONObject e = events.optJSONObject(i);
-                                if (e == null) continue;
-                                String name = (e.optString("name", "") + " "
-                                    + e.optString("title", "")).toLowerCase(Locale.US);
-                                String target = null;
-
-                                if (name.contains("cpi")) {
-                                    String actual = tradingValue(rows, "CPI (Y-o-Y)", 1);
-                                    String forecast = tradingValue(rows, "CPI (Y-o-Y)", 2);
-                                    String previous = tradingValue(rows, "CPI (Y-o-Y)", 3);
-                                    if (!actual.equals("Belum rilis")) e.put("actual", actual);
-                                    if (!forecast.equals("Belum rilis")) e.put("consensus", forecast);
-                                    if (!previous.equals("Belum rilis")) e.put("prior", previous);
-                                } else if (name.contains("jobless claims")) {
-                                    target = "Initial Jobless Claims";
-                                } else if (name.contains("nonfarm") || name.contains("payroll")) {
-                                    target = "Nonfarm Payrolls";
-                                } else if (name.contains("unemployment")) {
-                                    target = "Unemployment Rate";
-                                } else if (name.contains("retail sales")) {
-                                    target = "Retail Sales (M-o-M)";
-                                } else if (name.contains("ppi")) {
-                                    target = "PPI (Y-o-Y)";
-                                } else if (name.contains("gdp")) {
-                                    target = "GDP (Q-o-Q)";
-                                }
-
-                                if (target != null) {
-                                    String actual = tradingValue(rows, target, 1);
-                                    String forecast = tradingValue(rows, target, 2);
-                                    String previous = tradingValue(rows, target, 3);
-                                    if (!actual.equals("Belum rilis")) e.put("actual", actual);
-                                    if (!forecast.equals("Belum rilis")) e.put("consensus", forecast);
-                                    if (!previous.equals("Belum rilis")) e.put("prior", previous);
-                                }
-                            }
-                            result = root.toString();
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            final String data = result;
-            runOnUiThread(() -> render(data));
-        });
-    }
-
-
-    String fetchText(String address) {
-        HttpURLConnection c = null;
-        try {
-            c = (HttpURLConnection)new URL(address).openConnection();
-            c.setConnectTimeout(12000);
-            c.setReadTimeout(12000);
-            c.setRequestProperty("User-Agent", "Mozilla/5.0");
-            InputStream in = c.getInputStream();
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] b = new byte[4096];
-            int n;
-            while ((n = in.read(b)) != -1) out.write(b, 0, n);
-            in.close();
-            return out.toString("UTF-8");
-        } catch (Exception ex) {
-            return "";
-        } finally {
-            if (c != null) c.disconnect();
-        }
-    }
-
-    ArrayList<String[]> tradingRows(String html) {
-        ArrayList<String[]> result = new ArrayList<>();
-        java.util.regex.Matcher tr = java.util.regex.Pattern.compile(
-            "<tr\\b[^>]*>(.*?)</tr>",
-            java.util.regex.Pattern.CASE_INSENSITIVE |
-            java.util.regex.Pattern.DOTALL).matcher(html);
-
-        while (tr.find()) {
-            ArrayList<String> cells = new ArrayList<>();
-            java.util.regex.Matcher td = java.util.regex.Pattern.compile(
-                "<td\\b[^>]*>(.*?)</td>",
-                java.util.regex.Pattern.CASE_INSENSITIVE |
-                java.util.regex.Pattern.DOTALL).matcher(tr.group(1));
-
-            while (td.find()) {
-                String v = td.group(1).replaceAll("(?is)<[^>]*>", " ")
-                    .replace("&nbsp;", " ").replace("&#160;", " ")
-                    .replace("&amp;", "&").trim().replaceAll("\\s+", " ");
-                cells.add(v);
-            }
-
-            if (cells.size() >= 8 &&
-                "USD".equalsIgnoreCase(cells.get(1))) {
-                result.add(new String[] {
-                    cells.get(3), cells.get(5), cells.get(6), cells.get(7)
-                });
-            }
-        }
-        return result;
-    }
-
-    String tradingValue(ArrayList<String[]> rows, String event, int col) {
-        for (String[] row : rows) {
-            if (row[0].equalsIgnoreCase(event) &&
-                col >= 0 && col < 4 &&
-                !row[col].isEmpty() && !row[col].equals("-") &&
-                !row[col].equals("--")) return row[col];
-        }
-        return "Belum rilis";
-    }
-
-    boolean isUSNews(JSONObject e) {
-        String name = (e.optString("name","") + " "
-            + e.optString("title","") + " "
-            + e.optString("category","")).toLowerCase(Locale.US);
-
-        if (name.contains("china") || name.contains("australia")
-            || name.contains("united kingdom") || name.contains("uk gdp")
-            || name.contains("eurozone") || name.contains("japan")
-            || name.contains("canada")) return false;
-
-        if (name.startsWith("us ") || name.contains("united states")
-            || name.startsWith("u.s.")) return true;
-
-        String[] keys = {
-            "united states","u.s.","us cpi","cpi","inflation",
-            "nonfarm","payroll","employment","unemployment",
-            "jobless claims","fomc","federal reserve","fed rate",
-            "pce","ppi","gdp","retail sales","ism","pmi",
-            "jolts","adp employment","consumer confidence",
-            "durable goods","housing starts","industrial production"
-        };
-
-        for (String k : keys) if (name.contains(k)) return true;
-        return false;
-    }
-
-    String val(JSONObject e, String... keys) {
-        for (String k : keys) {
-            Object v = e.opt(k);
-            if (v != null && v != JSONObject.NULL) {
-                String s = String.valueOf(v).trim();
-                if (!s.isEmpty() && !s.equalsIgnoreCase("null"))
-                    return s;
-            }
-        }
-        return "Belum rilis";
-    }
-
-    void render(String raw) {
-        list.removeAllViews();
-
-        if (raw.isEmpty()) {
-            status.setText("Data gagal diambil. Periksa internet lalu tekan PERBARUI DATA.");
+        String key = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(PULSEPRO_API_KEY, "");
+        if (key.trim().isEmpty()) {
+            addNotice(analysisPanel, "KUNCI API BELUM DIATUR",
+                "Tekan GANTI API KEY untuk memasukkan kunci Earnings API.");
             return;
         }
 
-        try {
-            JSONObject root = new JSONObject(raw);
-            JSONArray events = root.optJSONArray("events");
-            if (events == null) events = root.optJSONArray("data");
-            if (events == null && root.optJSONObject("data") != null)
-                events = root.optJSONObject("data").optJSONArray("events");
+        addNotice(analysisPanel, "MEMUAT DATA BERITA...",
+                "Mengambil jadwal sesuai periode yang dipilih.");
+        loadEconomicEvents(key, selectedPeriod);
+    }
 
-            if (events == null) {
-                status.setText("Format data kalender belum dikenali.");
-                return;
+    private void showApiKeyDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("Masukkan API key Earnings");
+        input.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+
+        new AlertDialog.Builder(this)
+            .setTitle("API KEY EARNINGS")
+            .setMessage("Key disimpan di penyimpanan privat aplikasi. "
+                + "Jangan bagikan APK yang berisi kredensial pribadi.")
+            .setView(input)
+            .setNegativeButton("BATAL", (d, w) -> {})
+            .setPositiveButton("SIMPAN", (d, w) -> {
+                String key = input.getText().toString().trim();
+                if (key.isEmpty()) {
+                    Toast.makeText(this, "API key masih kosong",
+                        Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString(PULSEPRO_API_KEY, key).apply();
+                showAnalysis();
+            })
+            .show();
+    }
+
+    private List<String> datesForPeriod(String period) {
+        List<String> dates = new ArrayList<>();
+        Calendar c = Calendar.getInstance();
+        c.set(Calendar.HOUR_OF_DAY, 12);
+        c.set(Calendar.MINUTE, 0);
+        c.set(Calendar.SECOND, 0);
+        c.set(Calendar.MILLISECOND, 0);
+
+        if ("Hari Ini".equals(period)) {
+            dates.add(formatDate(c));
+        } else if ("Besok".equals(period)) {
+            c.add(Calendar.DAY_OF_YEAR, 1);
+            dates.add(formatDate(c));
+        } else if ("Lusa".equals(period)) {
+            c.add(Calendar.DAY_OF_YEAR, 2);
+            dates.add(formatDate(c));
+        } else if ("Pekan Ini".equals(period)) {
+            int dow = c.get(Calendar.DAY_OF_WEEK);
+            int daysToSunday = (Calendar.SUNDAY - dow + 7) % 7;
+            for (int i = 0; i <= daysToSunday; i++) {
+                dates.add(formatDate(c));
+                c.add(Calendar.DAY_OF_YEAR, 1);
             }
+        } else {
+            int dow = c.get(Calendar.DAY_OF_WEEK);
+            int daysToNextMonday = (Calendar.MONDAY - dow + 7) % 7;
+            if (daysToNextMonday == 0) daysToNextMonday = 7;
+            c.add(Calendar.DAY_OF_YEAR, daysToNextMonday);
+            for (int i = 0; i < 7; i++) {
+                dates.add(formatDate(c));
+                c.add(Calendar.DAY_OF_YEAR, 1);
+            }
+        }
+        return dates;
+    }
 
-            int count = 0;
-            for (int i=0; i<events.length(); i++) {
-                JSONObject e = events.optJSONObject(i);
-                if (e == null || !isUSNews(e)) continue;
+    private String formatDate(Calendar c) {
+        return String.format(Locale.US, "%04d-%02d-%02d",
+            c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1,
+            c.get(Calendar.DAY_OF_MONTH));
+    }
 
-                String name = val(e,"title","name","event");
-                String time = val(e,"time_utc","datetime","date");
-                String prior = val(e,"prior","previous");
-                String forecast = val(e,"consensus","forecast");
-                String actual = val(e,"actual");
-                String impact = val(e,"impact");
-
-                String wib = time;
+    private void loadEconomicEvents(String key, String period) {
+        final List<String> dates = datesForPeriod(period);
+        apiExecutor.execute(() -> {
+            List<JSONObject> all = new ArrayList<>();
+            String error = null;
+            for (String date : dates) {
+                HttpURLConnection conn = null;
                 try {
-                    Instant instant = Instant.parse(time);
-                    wib = DateTimeFormatter.ofPattern(
-                        "dd MMM HH:mm 'WIB'", new Locale("id","ID"))
-                        .withZone(ZoneId.of("Asia/Jakarta"))
-                        .format(instant);
-                } catch (Exception ignored) {}
+                    String urlText =
+                        "https://api.earningsapi.com/v1/calendar/economic"
+                        + "?date=" + date
+                        + "&apikey=" + java.net.URLEncoder.encode(key, "UTF-8");
+                    conn = (HttpURLConnection) new URL(urlText).openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(12000);
+                    conn.setReadTimeout(15000);
+                    conn.setRequestProperty("Accept", "application/json");
+                    conn.setRequestProperty("User-Agent", "PulsePro/1.0");
 
-                String analysis = analyze(name,actual,forecast);
+                    int status = conn.getResponseCode();
+                    java.io.InputStream stream = status >= 200 && status < 300
+                        ? conn.getInputStream() : conn.getErrorStream();
+                    if (status < 200 || status >= 300) {
+                        if (stream != null) stream.close();
+                        error = "API mengembalikan HTTP " + status
+                            + ". Periksa key, kuota, atau akses API.";
+                        continue;
+                    }
 
-                LinearLayout card = new LinearLayout(this);
-                card.setOrientation(LinearLayout.VERTICAL);
-                card.setPadding(dp(13),dp(12),dp(13),dp(12));
-                card.setBackgroundColor(Color.rgb(31,41,55));
+                    java.io.ByteArrayOutputStream out =
+                        new java.io.ByteArrayOutputStream();
+                    byte[] buffer = new byte[4096];
+                    int n;
+                    while ((n = stream.read(buffer)) != -1) {
+                        out.write(buffer, 0, n);
+                    }
+                    stream.close();
 
-                LinearLayout.LayoutParams cp =
-                    new LinearLayout.LayoutParams(-1,-2);
-                cp.bottomMargin = dp(10);
-                list.addView(card,cp);
+                    String body = out.toString("UTF-8");
+                    JSONArray events;
+                    if (body.trim().startsWith("[")) {
+                        events = new JSONArray(body);
+                    } else {
+                        JSONObject root = new JSONObject(body);
+                        events = root.optJSONArray("data");
+                        if (events == null) {
+                            events = root.optJSONArray("events");
+                        }
+                        if (events == null) {
+                            error = "Format respons API tidak dikenali: "
+                                + "array data/events tidak ditemukan.";
+                            continue;
+                        }
+                    }
 
-                addText(card,name,17,Color.WHITE);
-                addText(card,wib + "  •  Impact: " + impact,12,Color.LTGRAY);
-                addText(card,"PREV   " + prior,14,Color.WHITE);
-                addText(card,"FORECAST   " + forecast,14,Color.WHITE);
-                addText(card,"ACT      " + actual,15,
-                    actual.equals("--") ? Color.LTGRAY : Color.rgb(90,220,140));
-                addText(card,"ANALISA DAMPAK NEWS",13,Color.rgb(212,175,55));
-                addText(card,analysis,14,Color.WHITE);
-
-                count++;
+                    for (int i = 0; i < events.length(); i++) {
+                        JSONObject e = events.optJSONObject(i);
+                        if (e == null) continue;
+                        JSONObject item = new JSONObject();
+                        item.put("date", e.optString("date", date));
+                        item.put("time", e.optString("time", ""));
+                        item.put("event", e.optString("eventName",
+                            e.optString("event", e.optString("name", "Berita"))));
+                        item.put("country", e.optString("country", ""));
+                        item.put("previous", e.optString("previous", ""));
+                        item.put("forecast", e.optString("consensus",
+                            e.optString("forecast", "")));
+                        item.put("actual", e.optString("actual", ""));
+                        all.add(item);
+                    }
+                } catch (Exception ex) {
+                    error = "Gagal mengambil data (" +
+                        ex.getClass().getSimpleName() + ").";
+                } finally {
+                    if (conn != null) conn.disconnect();
+                }
             }
 
-            status.setText(count == 0
-                ? ("today".equals(getIntent().getStringExtra("period"))
-                ? "Belum ada berita berdampak tinggi untuk hari ini. Tekan PERBARUI DATA untuk mencoba lagi."
-                : "Belum ada berita berdampak tinggi yang cocok dalam 7 hari. Tekan PERBARUI DATA untuk mencoba lagi.")
-                : count + " berita cocok • pembaruan otomatis tiap 1 menit saat halaman terbuka.");
+            Collections.sort(all, (a, b) -> {
+                int d = a.optString("date").compareTo(b.optString("date"));
+                return d != 0 ? d :
+                    a.optString("time").compareTo(b.optString("time"));
+            });
 
-        } catch (Exception e) {
-            status.setText("Gagal membaca data kalender.");
+            final String finalError = error;
+            mainHandler.post(() -> {
+                if (isFinishing() || !"analysis".equals(currentTab)
+                        || !period.equals(selectedPeriod)
+                        || analysisPanel == null) return;
+                renderEconomicEvents(all, finalError, dates);
+            });
+        });
+    }
+
+    private void renderEconomicEvents(List<JSONObject> events,
+                                      String error, List<String> dates) {
+        if (analysisPanel == null) return;
+        analysisPanel.removeAllViews();
+
+        LinearLayout headerRow = new LinearLayout(this);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView heading = makeText("ANALISIS USD/XAU", 18, GOLD, true);
+        headerRow.addView(heading, new LinearLayout.LayoutParams(0, dp(44), 1));
+        Button refresh = new Button(this);
+        refresh.setText("↻");
+        refresh.setTextSize(23);
+        refresh.setAllCaps(false);
+        refresh.setContentDescription("Muat ulang data");
+        refresh.setTextColor(Color.WHITE);
+        refresh.setBackgroundTintList(
+            android.content.res.ColorStateList.valueOf(EMERALD));
+        headerRow.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(44)));
+        refresh.setOnClickListener(v -> showAnalysis());
+        analysisPanel.addView(headerRow);
+
+        LinearLayout periods = new LinearLayout(this);
+        periods.setOrientation(LinearLayout.HORIZONTAL);
+        String[] labels = {"Hari Ini", "Besok", "Lusa", "Pekan Ini", "Pekan Depan"};
+        for (String label : labels) {
+            Button b = new Button(this);
+            b.setText(label);
+            b.setAllCaps(false);
+            b.setTextSize(10);
+            b.setTextColor(Color.WHITE);
+            b.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(
+                    label.equals(selectedPeriod) ? EMERALD : PANEL));
+            periods.addView(b, new LinearLayout.LayoutParams(0, dp(44), 1));
+            b.setOnClickListener(v -> {
+                selectedPeriod = label;
+                showAnalysis();
+            });
+        }
+        analysisPanel.addView(periods);
+
+        TextView info = makeText(
+            "Earnings API • P: Previous • F: Forecast • A: Actual",
+            11, Color.LTGRAY, false);
+        info.setPadding(dp(4), dp(6), dp(4), dp(8));
+        analysisPanel.addView(info);
+
+        Button changeKey = new Button(this);
+        changeKey.setText("GANTI API KEY");
+        changeKey.setAllCaps(false);
+        changeKey.setTextSize(12);
+        changeKey.setOnClickListener(v -> showApiKeyDialog());
+        analysisPanel.addView(changeKey,
+            new LinearLayout.LayoutParams(-1, dp(42)));
+
+        if (error != null) {
+            addNotice(analysisPanel, "PERINGATAN DATA BERITA", error);
+        }
+        List<JSONObject> filteredEvents = new ArrayList<>();
+        for (JSONObject event : events) {
+            String country = event.optString("country", "").trim();
+            String name = event.optString("event", "").toLowerCase(Locale.ROOT);
+
+            boolean isUnitedStates = "United States".equalsIgnoreCase(country)
+                || "USA".equalsIgnoreCase(country)
+                || "US".equalsIgnoreCase(country);
+
+            boolean relevant = name.contains("cpi")
+                || name.contains("inflation rate")
+                || name.contains("inflation expectations")
+                || name.contains("pce price")
+                || name.contains("personal consumption expenditures")
+                || name.contains("payroll")
+                || name.contains("nonfarm")
+                || name.contains("employment change")
+                || name.contains("average hourly earnings")
+                || name.contains("average earnings")
+                || name.contains("unemployment")
+                || name.contains("initial jobless claims")
+                || name.contains("continuing jobless claims")
+                || name.contains("interest rate")
+                || name.contains("federal funds")
+                || name.contains("fomc")
+                || name.contains("fed chair")
+                || (name.contains("s&p global")
+                    && name.contains("pmi"))
+                || (name.contains("gdp")
+                    && !name.contains("gdpnow")
+                    && !name.contains("atlanta fed"));
+
+            if (isUnitedStates && relevant) filteredEvents.add(event);
+        }
+
+        if (filteredEvents.isEmpty()) {
+            addNotice(analysisPanel, "BELUM ADA BERITA UTAMA AS",
+                "Tidak ada event AS yang sesuai filter untuk periode ini. "
+                + "Coba pilih periode lain.");
+            return;
+        }
+
+        TextView count = makeText(
+            "BERITA UTAMA AS: " + filteredEvents.size(), 13, GOLD, true);
+        count.setPadding(dp(4), dp(4), dp(4), dp(10));
+        analysisPanel.addView(count);
+
+        for (JSONObject e : filteredEvents) {
+            String name = e.optString("event", "Berita ekonomi");
+            String country = e.optString("country", "");
+            String date = e.optString("date", "");
+            String time = e.optString("time", "");
+            String previous = displayValue(e.optString("previous", ""));
+            String forecast = displayValue(e.optString("forecast", ""));
+            String actual = displayValue(e.optString("actual", ""));
+
+            String bias = calculateBias(name,
+                e.optString("forecast", ""), e.optString("previous", ""),
+                e.optString("actual", ""));
+
+            StringBuilder body = new StringBuilder();
+            if (!date.isEmpty()) body.append(date);
+            if (!time.isEmpty() && !"null".equalsIgnoreCase(time)) {
+                if (body.length() > 0) body.append(" • ");
+                body.append(time);
+            }
+            body.append("\nP ").append(previous)
+                .append(" | F ").append(forecast)
+                .append(" | A ").append(actual)
+                .append("\nUSD: ").append(bias.split("\\|")[0])
+                .append("\nGOLD: ").append(bias.split("\\|")[1]);
+
+            addNotice(analysisPanel, terjemahkanEvent(name), body.toString());
         }
     }
 
-    void addText(LinearLayout parent,String text,int size,int color) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextSize(size);
-        t.setTextColor(color);
-        t.setPadding(0,dp(3),0,dp(3));
-        parent.addView(t);
+    private String terjemahkanEvent(String name) {
+        String n = name.toLowerCase(Locale.ROOT);
+        if (n.contains("initial jobless claims")) return "Klaim Pengangguran Awal AS";
+        if (n.contains("continuing jobless claims")) return "Klaim Pengangguran Lanjutan AS";
+        if (n.contains("manufacturing pmi")) return "PMI Manufaktur AS";
+        if (n.contains("services pmi")) return "PMI Jasa AS";
+        if (n.contains("composite pmi")) return "PMI Gabungan AS";
+        if (n.contains("inflation expectations")) return "Ekspektasi Inflasi AS";
+        if (n.contains("employment change")) return "Perubahan Ketenagakerjaan AS";
+        if (n.contains("federal funds") || n.contains("interest rate")) return "Suku Bunga AS";
+        if (n.contains("nonfarm") || n.contains("payroll")) return "Data Penggajian AS";
+        if (n.contains("retail sales")) return "Penjualan Ritel AS";
+        if (n.contains("cpi")) return "Indeks Harga Konsumen (CPI) AS";
+        if (n.contains("gdp") && !n.contains("gdpnow")) return "Produk Domestik Bruto (GDP) AS";
+        return name;
     }
 
-    String analyze(String name,String actual,String forecast) {
-        if (number(actual) == null || number(forecast) == null)
-            return "Menunggu ACT/FORECAST lengkap. Arah XAUUSD dan USD belum dikonfirmasi.";
-
-        Double a = number(actual);
-        Double f = number(forecast);
-        if (a == null || f == null || a.equals(f))
-            return "Hasil belum menunjukkan kejutan angka yang jelas. Pantau reaksi harga.";
-
-        String n = name.toLowerCase(Locale.US);
-        boolean inverse = n.contains("jobless claims")
-            || n.contains("unemployment") || n.contains("jobless");
-
-        boolean higher = a > f;
-        if (inverse) higher = !higher;
-
-        if (higher)
-            return "ACT lebih kuat dari FORECAST. Bias awal USD cenderung bullish, XAUUSD cenderung bearish.";
-        return "ACT lebih lemah dari FORECAST. Bias awal USD cenderung bearish, XAUUSD cenderung bullish.";
+    private String displayValue(String value) {
+        if (value == null || value.trim().isEmpty()
+                || "null".equalsIgnoreCase(value.trim())) return "—";
+        return value.trim();
     }
 
-    Double number(String s) {
-        try {
-            String x = s.replace(",","").replace("%","")
-                .replace("+","").replace("K","").trim();
-            java.util.regex.Matcher m =
-                java.util.regex.Pattern.compile("-?\\d+(\\.\\d+)?").matcher(x);
-            if (m.find()) return Double.parseDouble(m.group());
-        } catch (Exception ignored) {}
-        return null;
+    private double parseNumber(String value) {
+        if (value == null) return Double.NaN;
+        String s = value.trim().replace(",", "");
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("[-+]?(?:\\d+\\.?\\d*|\\.\\d+)")
+            .matcher(s);
+        if (!m.find()) return Double.NaN;
+        try { return Double.parseDouble(m.group()); }
+        catch (Exception ex) { return Double.NaN; }
+    }
+
+    private String calculateBias(String name, String forecast,
+                                 String previous, String actual) {
+        boolean hasActual = actual != null
+            && !actual.trim().isEmpty()
+            && !"null".equalsIgnoreCase(actual.trim());
+
+        if (!hasActual) {
+            return "MENUNGGU DATA AKTUAL|MENUNGGU DATA AKTUAL";
+        }
+
+        double f = parseNumber(forecast);
+        double a = parseNumber(actual);
+
+        if (Double.isNaN(a) || Double.isNaN(f)) {
+            return "NETRAL / BELUM CUKUP DATA|NETRAL / BELUM CUKUP DATA";
+        }
+
+        double compare = a - f;
+        String direction = "pasca-rilis";
+
+        String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
+
+        boolean inverse = n.contains("unemployment")
+            || n.contains("jobless")
+            || n.contains("claimant")
+            || n.contains("continuing claims");
+
+        boolean relevant = inverse
+            || n.contains("cpi")
+            || n.contains("inflation")
+            || n.contains("pce price")
+            || n.contains("payroll")
+            || n.contains("nonfarm")
+            || n.contains("employment change")
+            || n.contains("average earnings")
+            || n.contains("retail sales")
+            || n.contains("gdp")
+            || n.contains("manufacturing pmi")
+            || n.contains("services pmi")
+            || n.contains("interest rate")
+            || n.contains("federal funds");
+
+        if (!relevant || compare == 0.0) {
+            return "NETRAL / PERLU KONTEKS|NETRAL / PERLU KONTEKS";
+        }
+
+        boolean usdPositive = inverse ? compare < 0 : compare > 0;
+
+        String usd = (usdPositive
+            ? "CENDERUNG MENDUKUNG USD"
+            : "CENDERUNG MENEKAN USD") + " (" + direction + ")";
+
+        String xau = (usdPositive
+            ? "CENDERUNG MENEKAN XAU"
+            : "CENDERUNG MENDUKUNG XAU") + " (" + direction + ")";
+
+        return usd + "|" + xau;
+    }
+
+    private void addNotice(LinearLayout parent,
+                           String heading, String body) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(12), dp(12), dp(12), dp(12));
+
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(PANEL);
+        shape.setCornerRadius(dp(10));
+        shape.setStroke(dp(1), GOLD);
+        card.setBackground(shape);
+
+        LinearLayout.LayoutParams params =
+                new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(12);
+        parent.addView(card, params);
+
+        TextView title = makeText(heading, 14, GOLD, true);
+        title.setPadding(0, 0, 0, dp(8));
+        card.addView(title);
+
+        TextView detail = makeText(body, 13, Color.WHITE, false);
+        detail.setLineSpacing(dp(3), 1f);
+        card.addView(detail);
+    }
+
+    private TextView makeText(String text, int size,
+                              int color, boolean bold) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(size);
+        view.setTextColor(color);
+        if (bold) {
+            view.setTypeface(null, Typeface.BOLD);
+        }
+        return view;
+    }
+
+    @Override
+    protected void onDestroy() {
+        apiExecutor.shutdownNow();
+        if (calendarView != null) {
+            calendarView.stopLoading();
+            calendarView.setWebChromeClient(null);
+            calendarView.setWebViewClient(null);
+            calendarView.destroy();
+            calendarView = null;
+        }
+
+        super.onDestroy();
     }
 }

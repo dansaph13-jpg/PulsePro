@@ -3,503 +3,309 @@ package id.ts.overlay;
 import android.app.*;
 import android.os.*;
 import android.content.*;
-import android.net.Uri;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
 import android.provider.Settings;
+import android.net.Uri;
 import android.view.*;
 import android.widget.*;
-import android.text.*;
-import android.text.style.*;
-import org.json.*;
-import okhttp3.*;
-import java.text.*;
-import java.util.*;
-import java.util.concurrent.*;
 
 public class MainActivity extends Activity {
-    int dp(float n) {
+    private final int BG = Color.rgb(4, 31, 26);
+    private final int CARD = Color.rgb(8, 53, 42);
+    private final int GOLD = Color.rgb(222, 181, 91);
+    private final int WHITE = Color.rgb(245, 245, 239);
+    private final int MUTED = Color.rgb(166, 194, 181);
+    private LinearLayout root;
+
+    private int dp(float n) {
         return (int)(n * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    LinearLayout root;
-    TextView clock, display, statusView, updateView;
-TextView buyPriceView, buyDeltaView, sellPriceView, sellDeltaView, spreadView;
-    Handler handler = new Handler(Looper.getMainLooper());
-    OkHttpClient client;
-    WebSocket socket;
-    boolean active = false;
-    double buy = 0, sell = 0, previousBuy = 0;
-    static class PricePoint {
-        final long time;
-        final double price;
-        PricePoint(long t, double p) { time=t; price=p; }
-    }
-    final ArrayDeque<PricePoint> priceHistory = new ArrayDeque<>();
-    final ArrayDeque<PricePoint> sellPriceHistory = new ArrayDeque<>();
-    String updated = "-", status = "Menghubungkan Treasury...";
-    Runnable reconnect;
-
-    Runnable clockTick = new Runnable() {
-        public void run() {
-            if (!active) return;
-            if (clock != null) {
-                clock.setText(new SimpleDateFormat("HH:mm:ss",
-                    Locale.getDefault()).format(new Date()));
-            }
-            handler.postDelayed(this, 1000);
-        }
-    };
-
-    @Override public void onCreate(Bundle b) {
-        super.onCreate(b);
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission("android.permission.POST_NOTIFICATIONS")
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(
-                new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
-        }
-        active = true;
-        getWindow().setStatusBarColor(Color.rgb(5,35,29));
-        getWindow().setNavigationBarColor(Color.rgb(5,35,29));
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
+        getWindow().getDecorView().setSystemUiVisibility(0);
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16),dp(18),dp(16),dp(12));
-        root.setBackgroundColor(Color.rgb(5,35,29));
+        root.setPadding(dp(18), dp(18), dp(18), dp(14));
+        root.setBackgroundColor(BG);
 
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        // Header premium CH
         LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, dp(4), 0, dp(16));
+
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, -2, 1);
+        header.addView(brand, bp);
 
         TextView title = new TextView(this);
         title.setText("CUAN HUNTER");
-        title.setTextColor(Color.rgb(0,230,150));
+        title.setTextColor(GOLD);
         title.setTextSize(22);
-        title.setTypeface(null,1);
-        header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        title.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        brand.addView(title);
 
-        clock = new TextView(this);
-        clock.setText("--:--:--");
-        clock.setTextColor(Color.rgb(0,255,160));
-        clock.setTextSize(20);
-        clock.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        header.addView(clock);
+        TextView tagline = new TextView(this);
+        tagline.setText("GOLD  •  INTELLIGENCE  •  PRECISION");
+        tagline.setTextColor(MUTED);
+        tagline.setTextSize(9);
+        tagline.setLetterSpacing(0.08f);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-2, -2);
+        tp.topMargin = dp(3);
+        brand.addView(tagline, tp);
 
-        TextView menu = new TextView(this);
-        menu.setText("⋮");
-        menu.setTextSize(30);
-        menu.setTextColor(Color.WHITE);
-        menu.setPadding(dp(12),0,dp(4),0);
-        header.addView(menu);
-        root.addView(header);
+        ShieldLogo logo = new ShieldLogo(this);
+        LinearLayout.LayoutParams lpLogo =
+            new LinearLayout.LayoutParams(dp(54), dp(58));
+        lpLogo.leftMargin = dp(12);
+        header.addView(logo, lpLogo);
+        logo.setContentDescription("Aktifkan floating overlay");
+        logo.setOnClickListener(v -> startOverlay());
+        content.addView(header);
 
-        menu.setOnClickListener(v -> {
-            PopupMenu popup = new PopupMenu(this,menu);
-            popup.getMenu().add("US NEWS HARI INI").setOnMenuItemClickListener(item -> { openNews("today"); return true; });
-            popup.getMenu().add("AKTIFKAN OVERLAY").setOnMenuItemClickListener(item -> {
-                startOverlay(); return true;
-            });
-            popup.getMenu().add("HENTIKAN OVERLAY").setOnMenuItemClickListener(item -> {
-                stopService(new Intent(this,PriceOverlayService.class));
-                Toast.makeText(this,"Overlay dihentikan",Toast.LENGTH_SHORT).show();
-                return true;
-            });
-            popup.getMenu().add("KELUAR APLIKASI").setOnMenuItemClickListener(item -> {
-                active = false;
-                if (socket != null) socket.close(1000,"App closed");
-                stopService(new Intent(this,PriceOverlayService.class));
-                finishAndRemoveTask();
-                return true;
-            });
-            popup.show();
-        });
+        // Garis emas geometris
+        View goldLine = new View(this);
+        goldLine.setBackgroundColor(GOLD);
+        LinearLayout.LayoutParams glp =
+            new LinearLayout.LayoutParams(-1, dp(2));
+        glp.bottomMargin = dp(22);
+        content.addView(goldLine, glp);
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("PREMIUM  •  SIMPLE  •  HEMAT DAYA");
-        subtitle.setTextColor(Color.LTGRAY);
-        subtitle.setTextSize(11);
-        subtitle.setPadding(0,dp(4),0,dp(16));
-        subtitle.setVisibility(View.GONE);
-        root.addView(subtitle);
+        // COMMAND CENTER disembunyikan sesuai desain baru.
 
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(14),dp(12),dp(14),dp(14));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.rgb(10,59,45));
-        bg.setCornerRadius(dp(14));
-        bg.setStroke(dp(1),Color.rgb(212, 175, 55));
-        panel.setBackground(bg);
-        root.addView(panel,new LinearLayout.LayoutParams(-1,-2));
+        // Empat menu utama
+        LinearLayout row1 = makeRow();
+        row1.addView(menuCard("01", "MASTER DATA",
+            "Data utama & impor", () -> openMasterData()),
+            new LinearLayout.LayoutParams(0, dp(145), 1));
+        addGap(row1);
+        row1.addView(menuCard("02", "Gold Monitor",
+            "Harga Treasury", () -> startOverlay()),
+            new LinearLayout.LayoutParams(0, dp(145), 1));
+        content.addView(row1);
 
-        LinearLayout timeRow = new LinearLayout(this);
-        timeRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView timeLabel = new TextView(this);
-        timeLabel.setText("WAKTU WIB");
-        timeLabel.setTextColor(Color.LTGRAY);
-        timeLabel.setTextSize(12);
-        timeRow.addView(timeLabel,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout row2 = makeRow();
+        LinearLayout.LayoutParams row2p =
+            new LinearLayout.LayoutParams(-1, -2);
+        row2p.topMargin = dp(12);
+        row2.addView(menuCard("03", "NEWS",
+            "Berita & dampak pasar", () -> openNews()),
+            new LinearLayout.LayoutParams(0, dp(145), 1));
+        addGap(row2);
+        row2.addView(menuCard("04", "NOTES",
+            "Catatan pribadi", () -> openNotes()),
+            new LinearLayout.LayoutParams(0, dp(145), 1));
+        content.addView(row2, row2p);
 
-        timeRow.setVisibility(View.GONE);
-        panel.addView(timeRow);
+        // Footer garis ganda khas armor
+        View line2 = new View(this);
+        line2.setBackgroundColor(Color.rgb(111, 84, 39));
+        LinearLayout.LayoutParams l2p =
+            new LinearLayout.LayoutParams(-1, dp(1));
+        l2p.topMargin = dp(24);
+        content.addView(line2, l2p);
 
-        LinearLayout priceRow = new LinearLayout(this);
-        priceRow.setOrientation(LinearLayout.HORIZONTAL);
-        priceRow.setGravity(Gravity.TOP);
+        // footer CH EDITION disembunyikan sesuai desain baru.
 
-        LinearLayout buyCard = new LinearLayout(this);
-        buyCard.setOrientation(LinearLayout.VERTICAL);
-        buyCard.setPadding(dp(10), dp(8), dp(6), dp(8));
-        GradientDrawable buyBg = new GradientDrawable();
-        buyBg.setColor(Color.rgb(5, 43, 33));
-        buyBg.setCornerRadius(dp(10));
-        buyBg.setStroke(dp(1), Color.rgb(212, 175, 55));
-        buyCard.setBackground(buyBg);
-
-        TextView buyLabel = new TextView(this);
-        buyLabel.setText("BUY");
-        buyLabel.setTextColor(Color.LTGRAY);
-        buyLabel.setTextSize(12);
-        buyLabel.setVisibility(View.GONE);
-
-        buyPriceView = new TextView(this);
-        buyPriceView.setText("Menunggu...");
-        buyPriceView.setTextColor(Color.WHITE);
-        buyPriceView.setTextSize(24);
-        buyPriceView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        buyPriceView.setSingleLine(true);
-        buyPriceView.setTextSize(24);
-        buyCard.addView(buyPriceView);
-
-        buyDeltaView = new TextView(this);
-        buyDeltaView.setText("Menunggu data");
-        buyDeltaView.setTextColor(Color.LTGRAY);
-        buyDeltaView.setTextSize(12);
-        buyCard.addView(buyDeltaView);
-
-        LinearLayout.LayoutParams buyLp =
-            new LinearLayout.LayoutParams(0, -1, 1.15f);
-        buyLp.rightMargin = dp(5);
-        priceRow.addView(buyCard, buyLp);
-
-        LinearLayout rightColumn = new LinearLayout(this);
-        rightColumn.setOrientation(LinearLayout.VERTICAL);
-
-        LinearLayout sellCard = new LinearLayout(this);
-        sellCard.setOrientation(LinearLayout.VERTICAL);
-        sellCard.setPadding(dp(10), dp(8), dp(5), dp(8));
-        GradientDrawable sellBg = new GradientDrawable();
-        sellBg.setColor(Color.rgb(10, 59, 45));
-        sellBg.setCornerRadius(dp(9));
-        sellBg.setStroke(dp(1), Color.rgb(212, 175, 55));
-        sellCard.setBackground(sellBg);
-
-        TextView sellLabel = new TextView(this);
-        sellLabel.setText("SELL");
-        sellLabel.setTextColor(Color.LTGRAY);
-        sellLabel.setTextSize(11);
-        sellLabel.setVisibility(View.GONE);
-
-        sellPriceView = new TextView(this);
-        sellPriceView.setText("—");
-        sellPriceView.setTextColor(Color.WHITE);
-        sellPriceView.setTextSize(16);
-        sellPriceView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        sellPriceView.setSingleLine(true);
-        sellCard.addView(sellPriceView);
-
-        sellDeltaView = new TextView(this);
-        sellDeltaView.setText("Menunggu data");
-        sellDeltaView.setTextColor(Color.LTGRAY);
-        sellDeltaView.setTextSize(12);
-        sellCard.addView(sellDeltaView);
-
-        rightColumn.addView(sellCard, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        LinearLayout spreadCard = new LinearLayout(this);
-        spreadCard.setOrientation(LinearLayout.VERTICAL);
-        spreadCard.setPadding(dp(10), dp(8), dp(5), dp(8));
-        GradientDrawable spreadBg = new GradientDrawable();
-        spreadBg.setColor(Color.rgb(10, 59, 45));
-        spreadBg.setCornerRadius(dp(9));
-        spreadBg.setStroke(dp(1), Color.rgb(212, 175, 55));
-        spreadCard.setBackground(spreadBg);
-
-        TextView spreadLabel = new TextView(this);
-        spreadLabel.setText("SPREAD");
-        spreadLabel.setTextColor(Color.LTGRAY);
-        spreadLabel.setTextSize(11);
-        spreadLabel.setVisibility(View.GONE);
-
-        spreadView = new TextView(this);
-        spreadView.setText("—");
-        spreadView.setTextColor(Color.rgb(0, 230, 150));
-        spreadView.setTextSize(16);
-        spreadView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        spreadCard.addView(spreadView);
-
-        LinearLayout.LayoutParams spreadLp =
-            new LinearLayout.LayoutParams(-1, 0, 1f);
-        spreadLp.topMargin = dp(5);
-        rightColumn.addView(spreadCard, spreadLp);
-
-        priceRow.addView(rightColumn,
-            new LinearLayout.LayoutParams(0, -1, 1f));
-        panel.addView(priceRow, new LinearLayout.LayoutParams(-1, dp(120)));
-        updateView = new TextView(this);
-        updateView.setTextColor(Color.LTGRAY);
-        updateView.setTextSize(12);
-        updateView.setPadding(0,dp(12),0,dp(3));
-        updateView.setVisibility(View.GONE);
-        panel.addView(updateView);
-
-        statusView = new TextView(this);
-        statusView.setTextColor(Color.rgb(0,230,150));
-        statusView.setTextSize(12);
-        statusView.setVisibility(View.GONE);
-        panel.addView(statusView);
-
-        TextView note = new TextView(this);
-        note.setText("US NEWS hari ini tampil di floating overlay.");
-        note.setTextColor(Color.GRAY);
-        note.setTextSize(11);
-        note.setPadding(0,dp(14),0,0);
-        note.setVisibility(View.GONE);
-        root.addView(note);
-
-        TextView footer = new TextView(this);
-        footer.setText("TS GOLD PULSE PRO  •  LIVE PRICE");
-        footer.setTextColor(Color.rgb(110,170,145));
-        footer.setTextSize(10);
-        footer.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(-1,-2);
-        fp.topMargin = dp(18);
-        footer.setVisibility(View.GONE);
-        root.addView(footer,fp);
-
+        scroll.addView(content);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
-        render();
-        handler.post(clockTick);
-        connectPusher();
     }
 
-    void openNews(String period) {
-        Intent i = new Intent(this,USNewsActivity.class);
-        i.putExtra("period",period);
-        startActivity(i);
+
+    private class ShieldLogo extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        ShieldLogo(Context context) {
+            super(context);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth(), h = getHeight();
+            Path path = new Path();
+            path.moveTo(w * .50f, h * .06f);
+            path.lineTo(w * .91f, h * .20f);
+            path.lineTo(w * .86f, h * .58f);
+            path.quadTo(w * .80f, h * .82f, w * .50f, h * .96f);
+            path.quadTo(w * .20f, h * .82f, w * .14f, h * .58f);
+            path.lineTo(w * .09f, h * .20f);
+            path.close();
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.rgb(7, 81, 61));
+            canvas.drawPath(path, paint);
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setColor(GOLD);
+            canvas.drawPath(path, paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(GOLD);
+            paint.setTypeface(Typeface.create(
+                "sans-serif-condensed", Typeface.BOLD));
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTextSize(dp(20));
+            Paint.FontMetrics fm = paint.getFontMetrics();
+            float baseline = h / 2f - (fm.ascent + fm.descent) / 2f;
+            canvas.drawText("CH", w / 2f, baseline, paint);
+        }
     }
 
-    void startOverlay() {
+private LinearLayout makeRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        return row;
+    }
+
+    private void addGap(LinearLayout row) {
+        View gap = new View(this);
+        row.addView(gap, new LinearLayout.LayoutParams(dp(12), 1));
+    }
+
+    private View menuCard(String number, String label, String desc,
+                          Runnable action) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(10), dp(12));
+
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(CARD);
+        shape.setCornerRadius(dp(8));
+        shape.setStroke(dp(1), GOLD);
+        card.setBackground(shape);
+        card.setElevation(dp(2));
+
+        TextView num = new TextView(this);
+        num.setText("◆");
+        num.setTextColor(GOLD);
+        num.setTextSize(10);
+        num.setTypeface(null, Typeface.BOLD);
+        card.addView(num);
+
+        TextView name = new TextView(this);
+        name.setText(label);
+        name.setTextColor(WHITE);
+        name.setTextSize(14);
+        name.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        name.setLetterSpacing(0.04f);
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1, -2);
+        np.topMargin = dp(12);
+        card.addView(name, np);
+
+        TextView description = new TextView(this);
+        description.setText(desc);
+        description.setTextColor(MUTED);
+        description.setTextSize(10);
+        LinearLayout.LayoutParams dp2 = new LinearLayout.LayoutParams(-1, -2);
+        dp2.topMargin = dp(5);
+        card.addView(description, dp2);
+
+        card.setOnClickListener(v -> action.run());
+        return card;
+    }
+
+    private void openMasterData() {
+        // Coba Activity Master Data yang mungkin sudah ada.
+        String[] candidates = {
+            "id.ts.overlay.MasterDataActivity",
+            "id.ts.overlay.MasterdataActivity",
+            "id.ts.goldoverlay.MasterDataActivity"
+        };
+        for (String name : candidates) {
+            try {
+                Class<?> c = Class.forName(name);
+                startActivity(new Intent(this, c));
+                return;
+            } catch (ClassNotFoundException ignored) {
+            } catch (Exception e) {
+                Toast.makeText(this, "Master Data belum dapat dibuka",
+                    Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("MASTER DATA")
+            .setMessage("Menu Master Data siap. Layar impor CSV perlu dihubungkan ke modul Master Data proyek.")
+            .setPositiveButton("OK", null)
+            .show();
+    }
+
+    private void openNews() {
+        try {
+            Intent i = new Intent(this, USNewsActivity.class);
+            i.putExtra("period", "today");
+            startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "News belum dapat dibuka",
+                Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openNotes() {
+        EditText input = new EditText(this);
+        input.setText(getSharedPreferences("cuan_hunter", MODE_PRIVATE)
+            .getString("notes", ""));
+        input.setTextColor(WHITE);
+        input.setHintTextColor(MUTED);
+        input.setHint("Tulis catatan...");
+        input.setMinLines(4);
+        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setPadding(dp(12), dp(12), dp(12), dp(12));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(CARD);
+        bg.setCornerRadius(dp(6));
+        bg.setStroke(dp(1), GOLD);
+        input.setBackground(bg);
+
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setPadding(dp(18), dp(8), dp(18), 0);
+        wrap.addView(input, new LinearLayout.LayoutParams(-1, -2));
+
+        new AlertDialog.Builder(this)
+            .setTitle("NOTES")
+            .setView(wrap)
+            .setNegativeButton("TUTUP", null)
+            .setPositiveButton("SIMPAN", (d, w) ->
+                getSharedPreferences("cuan_hunter", MODE_PRIVATE)
+                    .edit().putString("notes", input.getText().toString()).apply())
+            .show();
+    }
+
+    private void startOverlay() {
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this,"Izinkan overlay di pengaturan",Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Izinkan overlay untuk mengaktifkan tombol C dan TS",
+                Toast.LENGTH_LONG).show();
             Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:"+getPackageName()));
+                Uri.parse("package:" + getPackageName()));
             startActivity(i);
             return;
         }
-        Intent i = new Intent(this,PriceOverlayService.class);
+        Intent i = new Intent(this, PriceOverlayService.class);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
         else startService(i);
-        Toast.makeText(this,"Overlay diaktifkan",Toast.LENGTH_SHORT).show();
-    }
-
-    String rupiah(double n) {
-        return NumberFormat.getIntegerInstance(new Locale("id","ID"))
-            .format(Math.round(n));
-    }
-
-
-    void recordPrice(double price) {
-        long now = System.currentTimeMillis();
-        priceHistory.addLast(new PricePoint(now, price));
-        while (!priceHistory.isEmpty()
-                && now - priceHistory.peekFirst().time > 180000L)
-            priceHistory.removeFirst();
-    }
-
-    double minuteReference() {
-        long target = System.currentTimeMillis() - 60000L;
-        PricePoint best = null;
-        for (PricePoint p : priceHistory) {
-            if (p.time <= target) best = p;
-            else break;
-        }
-        return best != null && target - best.time <= 120000L
-            ? best.price : 0;
-    }
-
-
-
-    void recordSellPrice(double price) {
-        long now = System.currentTimeMillis();
-        sellPriceHistory.addLast(new PricePoint(now, price));
-        while (!sellPriceHistory.isEmpty()
-                && now - sellPriceHistory.peekFirst().time > 180000L)
-            sellPriceHistory.removeFirst();
-    }
-
-    double sellMinuteReference() {
-        long target = System.currentTimeMillis() - 60000L;
-        PricePoint best = null;
-        for (PricePoint p : sellPriceHistory) {
-            if (p.time <= target) best = p;
-            else break;
-        }
-        return best != null && target - best.time <= 65000L ? best.price : 0;
-    }
-
-    void render() {
-        if (buyPriceView == null) return;
-        if (buy <= 0 || sell <= 0) {
-            buyPriceView.setText("Menunggu...");
-            buyDeltaView.setText("Menunggu data");
-            sellPriceView.setText("—");
-            spreadView.setText("—");
-            return;
-        }
-
-        buyPriceView.setText(rupiah(buy));
-        sellPriceView.setText(rupiah(sell));
-        spreadView.setText(String.format(Locale.US, "%.2f%%",
-            Math.abs(buy-sell)/buy*100.0));
-
-        double ref = minuteReference();
-        int color;
-        if (ref <= 0) {
-            color = Color.rgb(245,200,90);
-            buyDeltaView.setText("Mengumpulkan data");
-        } else {
-            double d = buy-ref;
-            color = d > 0 ? Color.rgb(0,255,160)
-                : d < 0 ? Color.rgb(255,90,95)
-                : Color.rgb(245,200,90);
-            String arrow = d > 0 ? "▲ " : d < 0 ? "▼ " : "● ";
-            buyDeltaView.setText(arrow + rupiah(Math.abs(d))
-               );
-        }
-
-        buyPriceView.setTextColor(color);
-        buyDeltaView.setTextColor(color);
-
-        double sellRef = sellMinuteReference();
-        if (sellRef <= 0) {
-            sellDeltaView.setText("Mengumpulkan data");
-            sellDeltaView.setTextColor(Color.rgb(245,200,90));
-        } else {
-            double sd = sell - sellRef;
-            int sc = sd > 0 ? Color.rgb(0,255,160)
-                : sd < 0 ? Color.rgb(255,90,95)
-                : Color.rgb(245,200,90);
-            String sa = sd > 0 ? "▲ " : sd < 0 ? "▼ " : "● ";
-            sellDeltaView.setText(sa + rupiah(Math.abs(sd)));
-            sellDeltaView.setTextColor(sc);
-            sellPriceView.setTextColor(sc);
-        }
-        if (updateView != null) updateView.setText("Update: " + updated);
-        if (statusView != null) statusView.setText("Status: " + status);
-    }
-
-    double parsePrice(Object value) {
-        if (value == null) return 0;
-        String digits = value.toString().replaceAll("[^0-9]","");
-        if (digits.isEmpty()) return 0;
-        try { return Double.parseDouble(digits); }
-        catch (Exception e) { return 0; }
-    }
-
-    void connectPusher() {
-        if (!active) return;
-        if (client == null) {
-            client = new OkHttpClient.Builder()
-                .pingInterval(25,TimeUnit.SECONDS).build();
-        }
-
-        Request req = new Request.Builder()
-            .url("wss://ws-ap1.pusher.com/app/52e99bd2c3c42e577e13?protocol=7&client=js&version=8.4.0&flash=false")
-            .build();
-
-        socket = client.newWebSocket(req,new WebSocketListener() {
-            @Override public void onOpen(WebSocket ws,Response response) {
-                handler.post(() -> {
-                    if (!active) return;
-                    status = "Terhubung; menunggu harga...";
-                    render();
-                });
-            }
-
-            @Override public void onMessage(WebSocket ws,String text) {
-                try {
-                    JSONObject msg = new JSONObject(text);
-                    String event = msg.optString("event","");
-                    if ("pusher:connection_established".equals(event)) {
-                        JSONObject data = new JSONObject();
-                        data.put("channel","gold-rate");
-                        JSONObject sub = new JSONObject();
-                        sub.put("event","pusher:subscribe");
-                        sub.put("data",data);
-                        ws.send(sub.toString());
-                    } else if ("pusher:ping".equals(event)) {
-                        JSONObject pong = new JSONObject();
-                        pong.put("event","pusher:pong");
-                        pong.put("data",new JSONObject());
-                        ws.send(pong.toString());
-                    } else if ("gold-rate-event".equals(event)) {
-                        Object raw = msg.opt("data");
-                        JSONObject d = raw instanceof JSONObject
-                            ? (JSONObject)raw : new JSONObject(String.valueOf(raw));
-                        android.util.Log.d("TS_RAW_PRICE", "buy=" + d.opt("buying_rate") + " sell=" + d.opt("selling_rate"));
-                        double nb = parsePrice(d.opt("buying_rate"));
-                        double ns = parsePrice(d.opt("selling_rate"));
-                        String rawPriceDebug = "RAW buy=" + d.opt("buying_rate") + " sell=" + d.opt("selling_rate");
-                        String u = d.optString("created_at","-");
-                        if (nb > 0 && ns > 0) handler.post(() -> {
-                            if (!active) return;
-                            previousBuy = buy; buy = nb; recordPrice(nb); sell = ns; recordSellPrice(ns); updated = u;
-                            status = rawPriceDebug;
-                            render();
-                        });
-                    } else if ("pusher_internal:subscription_succeeded".equals(event)) {
-                        handler.post(() -> {
-                            if (!active) return;
-                            status = "Channel aktif; menunggu harga...";
-                            render();
-                        });
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            @Override public void onFailure(WebSocket ws,Throwable t,Response response) {
-                handler.post(() -> {
-                    if (!active) return;
-                    status = "Koneksi terputus; mencoba ulang...";
-                    render();
-                    scheduleReconnect();
-                });
-            }
-
-            @Override public void onClosed(WebSocket ws,int code,String reason) {
-                handler.post(() -> {
-                    if (!active) return;
-                    status = "Koneksi ditutup; mencoba ulang...";
-                    render();
-                    scheduleReconnect();
-                });
-            }
-        });
-    }
-
-    void scheduleReconnect() {
-        if (!active) return;
-        if (reconnect != null) handler.removeCallbacks(reconnect);
-        reconnect = this::connectPusher;
-        handler.postDelayed(reconnect,5000);
+        Toast.makeText(this, "Floating C dan TS diaktifkan",
+            Toast.LENGTH_SHORT).show();
     }
 
     @Override protected void onDestroy() {
-        active = false;
-        handler.removeCallbacksAndMessages(null);
-        if (socket != null) socket.close(1000,"Activity closed");
-        if (client != null) client.dispatcher().executorService().shutdown();
         super.onDestroy();
     }
 }
